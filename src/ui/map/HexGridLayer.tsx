@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Polygon } from 'react-leaflet';
+import { Pane, Polygon } from 'react-leaflet';
 import type { LeafletEventHandlerFnMap } from 'leaflet';
 import { cellRiskCost, effectiveProfile } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
@@ -30,8 +30,10 @@ export function HexGridLayer() {
   if (!grid || !showHexGrid) return null;
   const waypointSet = new Set(waypoints);
 
+  // Own pane (below the pie + route panes) so the stack order survives toggling
+  // the grid off and on — Leaflet otherwise paints by DOM insertion order.
   return (
-    <>
+    <Pane name="hexgrid" style={{ zIndex: 410 }}>
       {grid.cells.map((cell) => {
         const state = riskStates.get(cell.id);
         const eff = state ? effectiveProfile(state) : null;
@@ -65,6 +67,6 @@ export function HexGridLayer() {
           />
         );
       })}
-    </>
+    </Pane>
   );
 }

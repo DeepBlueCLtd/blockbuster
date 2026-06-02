@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Polygon } from 'react-leaflet';
+import { Pane, Polygon } from 'react-leaflet';
 import { effectiveProfile, riskCostBreakdown } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { RISK_COLORS } from '@/ui/theme';
@@ -36,8 +36,10 @@ export function RiskPieLayer() {
 
   if (pies.length === 0) return null;
 
+  // Dedicated pane above the hex grid so the pies always sit on top of the
+  // shading, regardless of the order layers happen to (re)mount in.
   return (
-    <>
+    <Pane name="riskpies" style={{ zIndex: 420 }}>
       {pies.map((pie) => (
         <Polygon
           key={pie.key}
@@ -53,6 +55,6 @@ export function RiskPieLayer() {
           }}
         />
       ))}
-    </>
+    </Pane>
   );
 }

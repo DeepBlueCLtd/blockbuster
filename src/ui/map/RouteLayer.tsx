@@ -1,4 +1,4 @@
-import { Marker, Polyline, Tooltip } from 'react-leaflet';
+import { Marker, Pane, Polyline, Tooltip } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import type { LatLngExpression, LeafletEvent, Marker as LeafletMarker } from 'leaflet';
 import type { CellId } from '@domain';
@@ -59,20 +59,24 @@ export function RouteLayer() {
 
   return (
     <>
-      {plan?.coas.map((coa) => {
-        const selected = coa.id === selectedCoaId;
-        return (
-          <Polyline
-            key={coa.id}
-            positions={toPoints(coa.path)}
-            pathOptions={{
-              color: selected ? '#1565c0' : '#90a4ae',
-              weight: selected ? 5 : 2,
-              opacity: selected ? 0.9 : 0.45,
-            }}
-          />
-        );
-      })}
+      {/* Route lines live in the topmost vector pane so they're never hidden by
+          the hex shading or the risk pies. Waypoint markers stay in markerPane. */}
+      <Pane name="routes" style={{ zIndex: 430 }}>
+        {plan?.coas.map((coa) => {
+          const selected = coa.id === selectedCoaId;
+          return (
+            <Polyline
+              key={coa.id}
+              positions={toPoints(coa.path)}
+              pathOptions={{
+                color: selected ? '#1565c0' : '#90a4ae',
+                weight: selected ? 5 : 2,
+                opacity: selected ? 0.9 : 0.45,
+              }}
+            />
+          );
+        })}
+      </Pane>
 
       {waypoints.map((id, index) => {
         const center = grid.get(id)?.center;
