@@ -11,6 +11,7 @@ import {
   toHexGridDto,
 } from '@domain';
 import { createMockEngine } from '@/mocks/mockEngine';
+import { createGridBuilder } from '@/engine/hexgrid';
 import type { BlockbusterState } from './types';
 
 /** Pick two opposite-corner cells to seed routing with something to show. */
@@ -223,8 +224,16 @@ export function createBlockbusterStore(engine: Engine) {
   });
 }
 
-/** The app-wide store, wired to the mock engine until real modules land. */
-export const useBlockbusterStore = createBlockbusterStore(createMockEngine());
+/**
+ * The app-wide store. Real engine modules are adopted one at a time by composing
+ * a hybrid {@link Engine} over the mock (see docs/spec/11 "Hybrid engine"); the
+ * remaining mock modules drop out as their real counterparts land. Currently
+ * live: the hex grid builder.
+ */
+export const useBlockbusterStore = createBlockbusterStore({
+  ...createMockEngine(),
+  gridBuilder: createGridBuilder(),
+});
 
 // --- Selectors (pure, reusable derivations) -------------------------------
 
