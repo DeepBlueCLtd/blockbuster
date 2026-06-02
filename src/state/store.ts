@@ -210,7 +210,9 @@ export function createBlockbusterStore(engine: Engine) {
         }
       },
 
-      selectCell: (cellId) => set({ selectedCellId: cellId }),
+      // Re-selecting the currently selected cell clears the selection (toggle).
+      selectCell: (cellId) =>
+        set({ selectedCellId: get().selectedCellId === cellId ? null : cellId }),
       selectCoa: (coaId) => set({ selectedCoaId: coaId }),
       hoverCell: (cellId) => set({ hoveredCellId: cellId }),
       setActiveTab: (tab) => set({ activeTab: tab }),
