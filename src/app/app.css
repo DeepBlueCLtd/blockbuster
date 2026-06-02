@@ -524,6 +524,31 @@ button:hover {
 }
 
 /* --- Extra-risk tab --- */
+.extra-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.extra-field > span {
+  color: var(--muted);
+}
+
+.extra-field select,
+.extra-field input[type='text'] {
+  font: inherit;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.extra-field input[type='range'] {
+  width: 100%;
+}
+
 .extra-tools {
   display: flex;
   gap: 8px;
@@ -589,4 +614,15 @@ button:hover {
   font-size: 12px;
   color: var(--muted);
   text-transform: capitalize;
+}
+
+.zone-editor {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.zone-editor h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
 }

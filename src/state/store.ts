@@ -51,6 +51,7 @@ export function createBlockbusterStore(engine: Engine) {
       costParams: DEFAULT_COST_PARAMS,
       waypoints: [],
       zones: [],
+      zoneRiskType: RISK_TYPES[0],
 
       plan: null,
       planning: false,
@@ -252,6 +253,7 @@ export function createBlockbusterStore(engine: Engine) {
 
       selectZone: (id) => set({ selectedZoneId: id }),
       setDrawMode: (mode) => set({ drawMode: mode }),
+      setZoneRiskType: (risk) => set({ zoneRiskType: risk }),
     };
   });
 }

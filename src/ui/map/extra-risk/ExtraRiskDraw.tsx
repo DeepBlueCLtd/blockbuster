@@ -9,7 +9,6 @@ import {
 } from 'terra-draw';
 import { TerraDrawLeafletAdapter } from 'terra-draw-leaflet-adapter';
 import type { ZoneKind } from '@domain';
-import { RISK_TYPES } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { featureKind, featureToWorldRing, normalizeCircleRing } from './coords';
 
@@ -52,7 +51,8 @@ export function ExtraRiskDraw() {
         addZone({
           id: typeof id === 'string' ? id : String(id),
           name: `Zone ${++zoneSeq}`,
-          risk: RISK_TYPES[0],
+          // Read live so the dropdown's current choice applies to this new zone.
+          risk: useBlockbusterStore.getState().zoneRiskType,
           offset: 0,
           kind,
           ring,

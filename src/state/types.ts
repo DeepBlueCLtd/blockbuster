@@ -45,6 +45,8 @@ export interface BlockbusterState {
   waypoints: CellId[];
   /** Extra-risk zones drawn over the current basemap (cleared on regenerate). */
   zones: RiskZone[];
+  /** Which risk channel a newly drawn zone targets (the Extra-risk tab dropdown). */
+  zoneRiskType: RiskType;
 
   // --- Routing output ---
   plan: RoutePlan | null;
@@ -92,4 +94,5 @@ export interface BlockbusterState {
   removeZone: (id: string) => void;
   selectZone: (id: string | null) => void;
   setDrawMode: (mode: DrawMode) => void;
+  setZoneRiskType: (risk: RiskType) => void;
 }
