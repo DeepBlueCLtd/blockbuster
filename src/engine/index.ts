@@ -5,9 +5,9 @@ import { createRiskEngine } from './risk';
 import { createRoutePlanner } from './routing';
 
 /**
- * Wires the real engine modules into a single {@link Engine}. Swap
- * `createMockEngine()` for this in `src/state/store.ts` once the modules below
- * are implemented (they currently throw "not implemented").
+ * Wires the real engine modules into a single {@link Engine}. This is what the
+ * app uses (see `src/state/store.ts`); the mock under `src/mocks/*` is retained
+ * only as the living reference and as fixture/test data.
  */
 export function createEngine(): Engine {
   return {
