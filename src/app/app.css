@@ -535,6 +535,13 @@ button:hover {
   background: #c62828;
 }
 
+/* While an extra-risk draw tool is armed, let pointer events reach the Terra Draw
+   layer instead of being captured by hexes, zones or markers underneath. */
+.leaflet-drawing .leaflet-pane path,
+.leaflet-drawing .leaflet-marker-icon {
+  pointer-events: none !important;
+}
+
 /* --- Extra-risk tab --- */
 .extra-field {
   display: flex;

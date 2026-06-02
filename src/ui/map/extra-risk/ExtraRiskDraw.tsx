@@ -81,5 +81,14 @@ export function ExtraRiskDraw() {
     }
   }, [drawMode]);
 
+  // While a tool is armed, flag the map container so its vector layers (hexes,
+  // zones) and markers become click-through (see app.css). Otherwise Leaflet
+  // swallows the click to select a hex and Terra Draw never sees the pointer.
+  useEffect(() => {
+    const el = map.getContainer();
+    el.classList.toggle('leaflet-drawing', drawMode !== null);
+    return () => el.classList.remove('leaflet-drawing');
+  }, [map, drawMode]);
+
   return null;
 }
