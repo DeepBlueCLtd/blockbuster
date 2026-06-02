@@ -228,15 +228,65 @@ button:hover {
   color: var(--muted);
 }
 
-/* --- COA charts --- */
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 12px;
-  font-size: 12px;
+/* --- Appetite sliders (a titled row of vertical sliders atop the COAs tab) --- */
+.appetite {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
 }
 
+.appetite-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.appetite-sliders {
+  display: flex;
+  gap: 6px;
+}
+
+.slider-vertical {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.slider-vertical input[type='range'] {
+  /* Modern vertical range; `direction: rtl` puts the minimum at the bottom. */
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 1.5rem;
+  height: 150px;
+  margin: 2px 0;
+  cursor: pointer;
+}
+
+.slider-vertical .slider-value {
+  font-size: 11px;
+}
+
+.slider-vertical .slider-label {
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.slider-vertical .slider-swatch {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.slider-vertical .slider-hint {
+  text-align: center;
+}
+
+/* --- COA charts --- */
 .legend-item {
   display: inline-flex;
   align-items: center;
@@ -251,16 +301,22 @@ button:hover {
 }
 
 .coa {
-  border: 1px solid var(--line);
+  /* The rounded box is colour-coded to match this COA's line on the map. */
+  border: 2px solid var(--coa-color, var(--line));
   border-radius: 8px;
   padding: 8px 10px;
   margin-bottom: 12px;
   cursor: pointer;
+  transition: box-shadow 0.12s ease;
 }
 
 .coa-selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  /* The active COA reads as a thicker line: an extra ring outside the border,
+     drawn as a shadow so selecting one never reflows the list. The soft drop
+     shadow lifts it off whatever sits behind. */
+  box-shadow:
+    0 0 0 2px var(--coa-color, var(--accent)),
+    0 1px 6px rgba(0, 0, 0, 0.18);
 }
 
 .coa-head {

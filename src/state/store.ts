@@ -57,7 +57,7 @@ export function createBlockbusterStore(engine: Engine) {
       selectedCellId: null,
       selectedCoaId: null,
       hoveredCellId: null,
-      activeTab: 'risk',
+      activeTab: 'coas',
       displayRisk: 'composite',
       // Start on the underlying terrain map; the hex grid is a switchable overlay.
       showTerrain: true,
