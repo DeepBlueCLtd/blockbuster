@@ -11,14 +11,8 @@ export function CellInspector() {
   const resetOverride = useBlockbusterStore((s) => s.resetOverride);
   const toggleWaypoint = useBlockbusterStore((s) => s.toggleWaypoint);
 
-  if (!selectedCellId) {
-    return (
-      <div className="inspector">
-        <h2>Cell inspector</h2>
-        <p className="panel-hint">Click a hex on the map to inspect and override its risks.</p>
-      </div>
-    );
-  }
+  // No selection: render nothing so the panel doesn't consume space.
+  if (!selectedCellId) return null;
 
   const state = riskStates.get(selectedCellId);
   if (!state) return null;
