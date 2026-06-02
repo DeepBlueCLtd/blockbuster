@@ -1,0 +1,51 @@
+name: Deploy to GitHub Pages
+
+# Builds the app on every push to main and publishes it to the root of the
+# gh-pages branch, which GitHub Pages serves as the production site.
+#
+# Per-PR previews (see pr-preview.yml) live under pr-preview/pr-<number>/ on
+# the same branch, so this deploy is configured NOT to delete that directory
+# (`clean-exclude`), allowing production and previews to coexist.
+
+on:
+  push:
+    branches:
+      - main
+  # Allow manual redeploys from the Actions tab.
+  workflow_dispatch:
+
+# Avoid overlapping deploys racing over the gh-pages branch.
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # push the built site to gh-pages
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: dist
+          # Replace the previous production build, but preserve the per-PR
+          # preview directory maintained by pr-preview.yml.
+          clean: true
+          clean-exclude: |
+            pr-preview/
