@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react';
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Relative base so the build works both at the site root and under a
+  // sub-path (e.g. GitHub Pages per-PR previews at `/<repo>/pr-preview/pr-N/`).
+  base: './',
   plugins: [react()],
   resolve: {
     alias: {
