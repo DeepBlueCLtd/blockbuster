@@ -274,6 +274,16 @@ function scaleParams(base: CostParams, s: Strategy): CostParams {
   };
 }
 
+/**
+ * How hard to penalise re-using a cell already crossed by an accepted COA. Each
+ * prior use multiplies that cell's entry cost by `(1 + DIVERSITY_PENALTY · uses)`,
+ * fanning successive searches out into genuinely different routes.
+ */
+const DIVERSITY_PENALTY = 1;
+
+/** Shared empty usage map for searches that apply no diversity penalty. */
+const NO_USAGE: ReadonlyMap<CellId, number> = new Map();
+
 function zeroRisk(): Record<RiskType, number> {
   const out = {} as Record<RiskType, number>;
   for (const r of RISK_TYPES) out[r] = 0;
@@ -306,8 +316,18 @@ function buildGraph(dto: HexGridDto, risk: Record<CellId, RiskProfile>): Graph {
   };
 }
 
-/** Dijkstra shortest path between two cells under the given cost params. */
-function shortestPath(graph: Graph, src: CellId, dst: CellId, params: CostParams): CellId[] {
+/**
+ * Dijkstra shortest path between two cells under the given cost params. `usage`
+ * maps a cell to how many already-accepted COAs cross it; entering such a cell is
+ * penalised so repeated searches discover distinct routes (k-shortest-with-diversity).
+ */
+function shortestPath(
+  graph: Graph,
+  src: CellId,
+  dst: CellId,
+  params: CostParams,
+  usage: ReadonlyMap<CellId, number>,
+): CellId[] {
   const dist = new Map<CellId, number>([[src, 0]]);
   const prev = new Map<CellId, CellId>();
   const visited = new Set<CellId>();
@@ -334,9 +354,11 @@ function shortestPath(graph: Graph, src: CellId, dst: CellId, params: CostParams
       if (visited.has(next)) continue;
       const toCenter = graph.centerOf(next);
       if (!toCenter) continue;
-      const edge =
+      const base =
         movementCost(worldDistance(fromCenter, toCenter), params) +
         cellRiskCost(graph.riskAt(next), params);
+      const uses = usage.get(next) ?? 0;
+      const edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
       const nd = (dist.get(current) ?? Infinity) + edge;
       if (nd < (dist.get(next) ?? Infinity)) {
         dist.set(next, nd);
@@ -356,32 +378,19 @@ function shortestPath(graph: Graph, src: CellId, dst: CellId, params: CostParams
   return path[0] === src ? path : [src, dst];
 }
 
-/** Order >2 waypoints greedily by hex proximity (placeholder for real TSP). */
-function orderWaypoints(graph: Graph, waypoints: CellId[]): CellId[] {
-  if (waypoints.length <= 2) return waypoints;
-  const remaining = new Set(waypoints.slice(1));
-  const start = waypoints[0]!;
-  const order: CellId[] = [start];
-  let current = start;
-  while (remaining.size > 0) {
-    let nearest: CellId | undefined;
-    let bestDist = Infinity;
-    const c0 = graph.centerOf(current);
-    for (const candidate of remaining) {
-      const c1 = graph.centerOf(candidate);
-      if (!c0 || !c1) continue;
-      const d = worldDistance(c0, c1);
-      if (d < bestDist) {
-        bestDist = d;
-        nearest = candidate;
-      }
-    }
-    if (nearest === undefined) break;
-    order.push(nearest);
-    remaining.delete(nearest);
-    current = nearest;
+/** Walk the waypoint sequence in order, concatenating each consecutive leg. */
+function pathThroughSequence(
+  graph: Graph,
+  sequence: readonly CellId[],
+  params: CostParams,
+  usage: ReadonlyMap<CellId, number> = NO_USAGE,
+): CellId[] {
+  const full: CellId[] = [];
+  for (let i = 0; i < sequence.length - 1; i++) {
+    const seg = shortestPath(graph, sequence[i]!, sequence[i + 1]!, params, usage);
+    full.push(...(i === 0 ? seg : seg.slice(1)));
   }
-  return order;
+  return full;
 }
 
 function buildCoa(id: string, label: string, path: CellId[], graph: Graph, params: CostParams): Coa {
@@ -417,28 +426,52 @@ function buildCoa(id: string, label: string, path: CellId[], graph: Graph, param
 /** Synchronous core of the mock planner (used by fixtures and tests). */
 export function planRoutesSync(request: RouteRequest): RoutePlan {
   const graph = buildGraph(request.grid, request.risk);
-  const ordered = orderWaypoints(graph, request.waypoints);
+  // Waypoints are visited in the exact order the analyst arranged them — the UI
+  // owns the sequence (add / reorder / relocate), so the planner must not shuffle
+  // them. Diversity comes from how routes path *between* consecutive waypoints.
+  const sequence = request.waypoints;
+  const params = request.params;
+  const coaCount = Math.max(1, request.coaCount);
 
+  const usage = new Map<CellId, number>();
   const seen = new Set<string>();
   const coas: Coa[] = [];
-  STRATEGIES.forEach((strategy, idx) => {
-    const stratParams = scaleParams(request.params, strategy);
-    // Build the path under the strategy's bias…
-    const full: CellId[] = [];
-    for (let i = 0; i < ordered.length - 1; i++) {
-      const seg = shortestPath(graph, ordered[i]!, ordered[i + 1]!, stratParams);
-      full.push(...(i === 0 ? seg : seg.slice(1)));
-    }
-    const signature = full.join('>');
-    if (seen.has(signature)) return;
-    seen.add(signature);
-    // …but score it under the analyst's actual params, so charts stay consistent.
-    coas.push(buildCoa(`coa-${idx}`, strategy.label, full, graph, request.params));
-  });
 
+  // Record a path as a COA if it's a genuinely new route. Tally accepted routes'
+  // cells in `usage` so later searches are pushed onto fresh ground. Every COA is
+  // scored under the analyst's real params, so the charts stay consistent
+  // regardless of the bias used to discover it.
+  const accept = (label: string, path: CellId[]): boolean => {
+    const signature = path.join('>');
+    if (path.length === 0 || seen.has(signature)) return false;
+    seen.add(signature);
+    for (const id of path) usage.set(id, (usage.get(id) ?? 0) + 1);
+    coas.push(buildCoa(`coa-${coas.length}`, label, path, graph, params));
+    return true;
+  };
+
+  // 1) Bias the search three ways (favour distance / balanced / favour low risk)
+  //    so the field's natural alternatives surface first, each undistorted.
+  for (const strategy of STRATEGIES) {
+    accept(strategy.label, pathThroughSequence(graph, sequence, scaleParams(params, strategy)));
+  }
+
+  // 2) If those biases collapsed onto the same route (common when risk varies
+  //    little across the corridor), fan out: penalise the cells already in use and
+  //    re-search under the real params for distinct alternatives, until we have
+  //    `coaCount` of them — or no genuinely different route remains.
+  for (let guard = 0; coas.length < coaCount && guard < coaCount + 2; guard++) {
+    if (!accept('alt', pathThroughSequence(graph, sequence, params, usage))) break;
+  }
+
+  // Rank best-scoring first, then label by rank (the alternatives are
+  // diversity-driven, so a rank reads truer than a strategy name).
   coas.sort((a, b) => a.totalCost - b.totalCost);
+  coas.forEach((coa, i) => {
+    coa.label = i === 0 ? 'Best route' : `Alternative ${i}`;
+  });
   return {
-    coas: coas.slice(0, Math.max(1, request.coaCount)),
+    coas: coas.slice(0, coaCount),
     waypoints: request.waypoints,
     generatedAt: Date.now(),
   };

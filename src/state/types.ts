@@ -63,6 +63,10 @@ export interface BlockbusterState {
   setOverride: (cellId: CellId, risk: RiskType, value: number) => void;
   resetOverride: (cellId: CellId, risk?: RiskType) => void;
   toggleWaypoint: (cellId: CellId) => void;
+  /** Move the waypoint at `from` to position `to`, preserving the rest of the order. */
+  reorderWaypoint: (from: number, to: number) => void;
+  /** Relocate the waypoint at `index` onto a different cell, keeping its sequence position. */
+  relocateWaypoint: (index: number, cellId: CellId) => void;
   clearWaypoints: () => void;
   replan: () => Promise<void>;
   selectCell: (cellId: CellId | null) => void;

@@ -1,4 +1,4 @@
-import { MapContainer } from 'react-leaflet';
+import { MapContainer, ZoomControl } from 'react-leaflet';
 import { CRS } from 'leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
 import { useBlockbusterStore } from '@/state/store';
@@ -30,8 +30,10 @@ export function MapView() {
         maxZoom={6}
         zoomSnap={0.25}
         attributionControl={false}
+        zoomControl={false}
       >
         <TerrainLayer />
+        <ZoomControl position="topright" />
         <HexGridLayer />
         <RouteLayer />
       </MapContainer>
