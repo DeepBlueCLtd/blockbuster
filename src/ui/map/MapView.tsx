@@ -4,9 +4,11 @@ import type { LatLngBoundsExpression } from 'leaflet';
 import { useBlockbusterStore } from '@/state/store';
 import { TerrainLayer } from './TerrainLayer';
 import { HexGridLayer } from './HexGridLayer';
+import { RiskPieLayer } from './RiskPieLayer';
 import { RouteLayer } from './RouteLayer';
 import { MapToolbar } from './MapToolbar';
 import { BiomeLegend } from './BiomeLegend';
+import { RiskPieLegend } from './RiskPieLegend';
 
 /**
  * The map pane. Uses `CRS.Simple` because the world is a fictitious flat
@@ -35,9 +37,11 @@ export function MapView() {
         <TerrainLayer />
         <ZoomControl position="topright" />
         <HexGridLayer />
+        <RiskPieLayer />
         <RouteLayer />
       </MapContainer>
       <BiomeLegend />
+      <RiskPieLegend />
     </div>
   );
 }

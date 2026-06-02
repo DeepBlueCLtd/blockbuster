@@ -62,6 +62,7 @@ export function createBlockbusterStore(engine: Engine) {
       // Start on the underlying terrain map; the hex grid is a switchable overlay.
       showTerrain: true,
       showHexGrid: false,
+      showRiskPies: false,
 
       regenerate: (seed) => {
         const s = get();
@@ -219,6 +220,7 @@ export function createBlockbusterStore(engine: Engine) {
       setDisplayRisk: (risk) => set({ displayRisk: risk }),
       setShowTerrain: (show) => set({ showTerrain: show }),
       setShowHexGrid: (show) => set({ showHexGrid: show }),
+      setShowRiskPies: (show) => set({ showRiskPies: show }),
     };
   });
 }

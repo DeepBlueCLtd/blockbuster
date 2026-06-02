@@ -1,4 +1,4 @@
-import { Marker, Polyline, Tooltip } from 'react-leaflet';
+import { Marker, Pane, Polyline, Tooltip } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import type { LatLngExpression, LeafletEvent, Marker as LeafletMarker } from 'leaflet';
 import type { CellId } from '@domain';
@@ -77,31 +77,36 @@ export function RouteLayer() {
 
   return (
     <>
-      {/* All halos first, so none is painted over a neighbouring COA's line. */}
-      {routes.map((route) => (
-        <Polyline
-          key={`halo-${route.id}`}
-          positions={route.points}
-          interactive={false}
-          pathOptions={{
-            color: COA_HALO_COLOR,
-            weight: lineWeight(route.selected) + 4,
-            opacity: 0.6,
-          }}
-        />
-      ))}
-      {routes.map((route) => (
-        <Polyline
-          key={route.id}
-          positions={route.points}
-          pathOptions={{
-            color: route.color,
-            weight: lineWeight(route.selected),
-            // Every route is fully vivid; thickness alone marks the selection.
-            opacity: 1,
-          }}
-        />
-      ))}
+      {/* Route lines and their halos live in the topmost vector pane, so the COA
+          paths are never hidden by the hex shading or the risk pies. Waypoint
+          markers stay in markerPane above them. */}
+      <Pane name="routes" style={{ zIndex: 430 }}>
+        {/* All halos first, so none is painted over a neighbouring COA's line. */}
+        {routes.map((route) => (
+          <Polyline
+            key={`halo-${route.id}`}
+            positions={route.points}
+            interactive={false}
+            pathOptions={{
+              color: COA_HALO_COLOR,
+              weight: lineWeight(route.selected) + 4,
+              opacity: 0.6,
+            }}
+          />
+        ))}
+        {routes.map((route) => (
+          <Polyline
+            key={route.id}
+            positions={route.points}
+            pathOptions={{
+              color: route.color,
+              weight: lineWeight(route.selected),
+              // Every route is fully vivid; thickness alone marks the selection.
+              opacity: 1,
+            }}
+          />
+        ))}
+      </Pane>
 
       {waypoints.map((id, index) => {
         const center = grid.get(id)?.center;
