@@ -26,4 +26,44 @@ Sliders will allow the user to control their risk appetite for each risk.
 
 Each hex cell will contain a small table showing the level of each risk in that cell. The analyst will be able to override per-cell risks, with modified values shown in highlight (with ability to reset individual overrides).
 
+# Specification & implementation
+
+A full build spec for the initial version lives in **[`docs/spec/`](./docs/spec/README.md)**. It is written for **parallel implementation**: every module talks only through typed contracts in the shared kernel (`src/domain`, alias `@domain`), so the engine, state and UI can be built independently.
+
+A **compiling scaffold** is in place: the app already runs end-to-end on a throwaway *mock engine* and *golden fixtures*, with the four real engine modules left as stubs for module owners to fill in.
+
+- Start here: [`docs/spec/README.md`](./docs/spec/README.md) → overview → architecture → domain model → per-module specs → [work breakdown](./docs/spec/11-work-breakdown.md).
+
+## Tech stack
+
+TypeScript (strict) · Vite · React 19 · Leaflet (`CRS.Simple`) · Zustand · custom SVG charts · Vitest · ESLint/Prettier. Routing runs in a Web Worker. Everything is client-side — TypeScript compiled to JS in the browser, no backend.
+
+## Getting started
+
+```bash
+npm install
+npm run dev        # http://localhost:5173 — runs on the mock engine + fixtures
+```
+
+Other checks (all green on the scaffold):
+
+```bash
+npm run typecheck  # tsc --noEmit
+npm run test:run   # vitest run
+npm run build      # tsc --noEmit && vite build
+npm run lint       # eslint .
+```
+
+## Where things live
+
+```
+src/domain/   shared kernel: types, units, ports, cost function (@domain)
+src/engine/   pure engine modules (mapgen, hexgrid, risk, routing) — STUBS
+src/mocks/    throwaway working engine + golden fixtures (run the app today)
+src/state/    Zustand store — the only bridge between UI and engine
+src/ui/       React + Leaflet map view, panels, charts, inspector
+src/app/      composition root (layout, tabs, mount)
+docs/spec/    the specification
+```
+
 
