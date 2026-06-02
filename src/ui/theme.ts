@@ -10,9 +10,6 @@ export const RISK_COLORS: Record<RiskType, string> = {
   thief: '#7e57c2',
 };
 
-/** Neutral colour for the movement portion of a COA bar. */
-export const MOVEMENT_COLOR = '#cfd8dc';
-
 /**
  * Vivid, well-separated line colours for the COAs, indexed by their position in
  * the plan (best route first) and wrapping if more COAs ever appear than
