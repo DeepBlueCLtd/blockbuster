@@ -65,7 +65,7 @@ export function RouteLayer() {
 
   // Colour each COA by its rank (best route first) and draw the selected one
   // last so its thicker line sits above the rest. A light halo under every line
-  // keeps the dark shades legible over whatever the map shows beneath them.
+  // keeps the colours legible over whatever the map shows beneath them.
   const routes = (plan?.coas ?? [])
     .map((coa, index) => ({
       id: coa.id,
@@ -97,7 +97,8 @@ export function RouteLayer() {
           pathOptions={{
             color: route.color,
             weight: lineWeight(route.selected),
-            opacity: route.selected ? 1 : 0.85,
+            // Every route is fully vivid; thickness alone marks the selection.
+            opacity: 1,
           }}
         />
       ))}
