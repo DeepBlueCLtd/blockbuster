@@ -11,6 +11,7 @@ export * from './world';
 export * from './rng';
 export * from './terrain';
 export * from './hex';
+export * from './geometry';
 export * from './risk';
 export * from './zone';
 export * from './cost';

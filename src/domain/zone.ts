@@ -1,6 +1,7 @@
 import type { WorldPoint } from './world';
 import type { RiskType } from './risk';
 import { clamp } from './units';
+import { coverageFraction } from './geometry';
 
 /** How an extra-risk zone was drawn. Geometry is always stored as a world ring. */
 export type ZoneKind = 'rectangle' | 'circle' | 'polygon';
@@ -36,4 +37,23 @@ export interface RiskZone {
 /** Clamp an offset into the allowed signed range. */
 export function clampZoneOffset(value: number): number {
   return clamp(value, ZONE_OFFSET_MIN, ZONE_OFFSET_MAX);
+}
+
+/**
+ * Aggregate the signed, area-weighted zone offsets for one cell: for every zone
+ * overlapping the hex, add `coverageFraction * offset` to that zone's channel.
+ * The result is fed to {@link applyZoneOffsets} to fold into the cell profile.
+ */
+export function zoneOffsetsForCell(
+  hexVertices: readonly WorldPoint[],
+  zones: readonly RiskZone[],
+): Partial<Record<RiskType, number>> {
+  const out: Partial<Record<RiskType, number>> = {};
+  for (const zone of zones) {
+    if (zone.offset === 0) continue;
+    const coverage = coverageFraction(hexVertices, zone.ring);
+    if (coverage <= 0) continue;
+    out[zone.risk] = (out[zone.risk] ?? 0) + coverage * zone.offset;
+  }
+  return out;
 }

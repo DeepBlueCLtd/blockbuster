@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { RiskZone } from '@domain';
 import { createMockEngine } from '@/mocks/mockEngine';
-import { createBlockbusterStore } from './store';
+import { createBlockbusterStore, selectEffectiveProfile } from './store';
 
 function makeZone(id: string, over: Partial<RiskZone> = {}): RiskZone {
   return {
@@ -68,5 +68,34 @@ describe('store — extra-risk zones', () => {
     store.getState().regenerate(2);
     expect(store.getState().zones).toHaveLength(0);
     expect(store.getState().selectedZoneId).toBeNull();
+  });
+
+  it('folds an area-weighted zone offset into the effective profile', () => {
+    store.getState().regenerate(1);
+    const grid = store.getState().grid;
+    // A central cell is fully inside the world, so a world-spanning zone covers it 100%.
+    const cellId = grid?.pointToCell({ x: 25, y: 15 });
+    expect(cellId).toBeDefined();
+    if (!cellId) return;
+
+    const baseThief = selectEffectiveProfile(store.getState(), cellId)?.thief ?? 0;
+
+    // A zone covering the whole world (coverage 1 everywhere) raising thief by 0.5.
+    store.getState().addZone(
+      makeZone('world', {
+        risk: 'thief',
+        offset: 0.5,
+        ring: [
+          { x: 0, y: 0 },
+          { x: 50, y: 0 },
+          { x: 50, y: 30 },
+          { x: 0, y: 30 },
+        ],
+      }),
+    );
+
+    expect(store.getState().zoneContribution.get(cellId)?.thief ?? 0).toBeCloseTo(0.5, 6);
+    const withZone = selectEffectiveProfile(store.getState(), cellId)?.thief ?? 0;
+    expect(withZone).toBeCloseTo(Math.min(1, baseThief + 0.5), 6);
   });
 });

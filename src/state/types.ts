@@ -39,6 +39,8 @@ export interface BlockbusterState {
   field: TerrainField | null;
   terrain: Map<CellId, TerrainSample>;
   riskStates: Map<CellId, CellRiskState>;
+  /** Per-cell, area-weighted sum of zone offsets per channel (derived from zones + grid). */
+  zoneContribution: Map<CellId, Partial<Record<RiskType, number>>>;
 
   // --- Analyst controls ---
   costParams: CostParams;
