@@ -83,9 +83,16 @@ describe('mapgen (spec)', () => {
     }
     expect(same / total).toBeGreaterThan(0.7);
     const counts = biomeCounts(rows);
+    const cellCount = rows.reduce((n, row) => n + row.length, 0);
     expect(counts.town).toBeGreaterThan(0);
     expect(counts.mountains).toBeGreaterThan(0);
-    expect(BIOMES.filter((b) => counts[b] > 0).length).toBeGreaterThanOrEqual(4);
+    // A varied landscape: nearly every terrain should appear. A missing biome
+    // (e.g. no woodland or savannah at all) is the degenerate output this guards.
+    expect(BIOMES.filter((b) => counts[b] > 0).length).toBeGreaterThanOrEqual(5);
+    // ...and no single terrain may swamp the map. An un-thresholded biome score
+    // collapses onto one biome (e.g. all-mountains); the share cap catches that.
+    const dominantShare = Math.max(...BIOMES.map((b) => counts[b])) / cellCount;
+    expect(dominantShare).toBeLessThan(0.5);
   });
 
   it('biome mix responds to MapGenTuning.biomeBias', () => {

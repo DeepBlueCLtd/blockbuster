@@ -33,6 +33,33 @@ const PEAK_M = 2600;
 /** How strongly `MapGenTuning.biomeBias` shifts the biome mix. */
 const BIAS_GAIN = 0.9;
 
+// --- Biome classification thresholds --------------------------------------
+//
+// Each biome scores `(field − center) · gain`, crossing zero at the center so a
+// biome only wins once its driving field passes that boundary; the unsettled,
+// mid-elevation, mid-moisture middle ground falls through to a small grassland
+// floor. Centers mirror the reference ladder in `createMockMapGenerator`
+// (mountains gate ≈0.6, woodland wet ≈0.55, savannah dry ≈0.42); gains are sized
+// so the boundaries stay crisp against the noise's actual spread while leaving
+// `biomeBias` (±`BIAS_GAIN`) room to shift the mix monotonically.
+const TOWN_AT = 0.7;
+const TOWN_GAIN = 6;
+const MOUNTAIN_AT = 0.6;
+const MOUNTAIN_GAIN = 4.5;
+// Water wants both wet *and* low ground, so it scores on moisture and depth.
+// Its moisture gain is deliberately steep: woodland already wins the merely-damp
+// majority, so water must overtake it sharply at the wet extreme (≈0.72, where
+// the reference ladder gates it) rather than bleeding into ordinary woodland.
+const WATER_AT = 0.68;
+const WATER_GAIN = 11;
+const LOWLAND_AT = 0.45;
+const WATER_LOW_GAIN = 1.5;
+const WOODLAND_AT = 0.54;
+const SAVANNAH_AT = 0.42;
+const MOISTURE_GAIN = 3.5;
+/** Floor that wins the neither-wet-nor-dry, low, unsettled middle ground. */
+const GRASSLAND_FLOOR = 0.05;
+
 interface Town {
   x: number;
   y: number;
@@ -81,14 +108,12 @@ function classifyBiome(
   bias: Partial<Record<Biome, number>> | undefined,
 ): Biome {
   const scores: Record<Biome, number> = {
-    town: settlement * 1.15,
-    mountains: elevation * 1.1,
-    water: (moisture - 0.55) * 1.6 + (0.45 - elevation) * 0.7,
-    woodland: (moisture - 0.5) * 1.0,
-    savannah: (0.5 - moisture) * 1.0,
-    // A small constant floor so grassland wins the "neither wet nor dry, low
-    // and unsettled" middle ground.
-    grassland: 0.18,
+    town: (settlement - TOWN_AT) * TOWN_GAIN,
+    mountains: (elevation - MOUNTAIN_AT) * MOUNTAIN_GAIN,
+    water: (moisture - WATER_AT) * WATER_GAIN + (LOWLAND_AT - elevation) * WATER_LOW_GAIN,
+    woodland: (moisture - WOODLAND_AT) * MOISTURE_GAIN,
+    savannah: (SAVANNAH_AT - moisture) * MOISTURE_GAIN,
+    grassland: GRASSLAND_FLOOR,
   };
   if (bias) {
     for (const b of BIOMES) scores[b] += BIAS_GAIN * (bias[b] ?? 0);
