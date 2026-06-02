@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest';
+import type { CellId, WorldPoint } from '@domain';
+import { worldDistance } from '@domain';
 import { planRoutesSync } from './mockEngine';
-import { fixtureRequest, fixtureWaypoints } from './fixtures';
+import { fixtureGrid, fixtureRequest, fixtureWaypoints } from './fixtures';
+
+/** Id of the fixture cell whose centre is nearest `target`. */
+function cellNear(target: WorldPoint): CellId {
+  let best = fixtureGrid.cells[0]!;
+  let bestDist = Infinity;
+  for (const cell of fixtureGrid.cells) {
+    const d = worldDistance(cell.center, target);
+    if (d < bestDist) {
+      bestDist = d;
+      best = cell;
+    }
+  }
+  return best.id;
+}
 
 describe('mock route planner', () => {
   const plan = planRoutesSync(fixtureRequest);
@@ -29,5 +45,27 @@ describe('mock route planner', () => {
     const again = planRoutesSync(fixtureRequest);
     const paths = (p: typeof plan) => p.coas.map((c) => c.path.join('>'));
     expect(paths(again)).toEqual(paths(plan));
+  });
+
+  it('visits waypoints in the given sequence, not a reordered one', () => {
+    // C sits much closer to A than B does, so a nearest-neighbour reorder would
+    // visit A → C → B. The planner must instead honour the requested order A → B → C.
+    const a = cellNear({ x: 5, y: 5 });
+    const b = cellNear({ x: 45, y: 25 });
+    const c = cellNear({ x: 5, y: 25 });
+    expect(new Set([a, b, c]).size).toBe(3);
+
+    const seqPlan = planRoutesSync({ ...fixtureRequest, waypoints: [a, b, c] });
+    expect(seqPlan.coas.length).toBeGreaterThanOrEqual(1);
+    for (const coa of seqPlan.coas) {
+      expect(coa.path[0]).toBe(a);
+      expect(coa.path[coa.path.length - 1]).toBe(c);
+      const ia = coa.path.indexOf(a);
+      const ib = coa.path.indexOf(b);
+      const ic = coa.path.indexOf(c);
+      expect(ia).toBeGreaterThanOrEqual(0);
+      expect(ib).toBeGreaterThan(ia);
+      expect(ic).toBeGreaterThan(ib);
+    }
   });
 });

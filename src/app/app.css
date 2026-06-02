@@ -291,3 +291,137 @@ button:hover {
   gap: 8px;
   margin-top: 10px;
 }
+
+/* --- Waypoint sequence editor --- */
+.waypoints {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.waypoints-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.waypoints-head h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  color: var(--accent);
+}
+
+.waypoint-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.waypoint-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.waypoint-row.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.waypoint-badge {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.waypoint-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.waypoint-label strong {
+  font-size: 13px;
+}
+
+.waypoint-cell {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.waypoint-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.waypoint-actions button {
+  padding: 2px 7px;
+  line-height: 1;
+}
+
+.waypoint-actions button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+/* --- Draggable waypoint markers on the map --- */
+/* Leaflet's divIcon tags the element `leaflet-marker-icon`; the two-class
+   selector both matches it and outranks Leaflet's single-class defaults. */
+.leaflet-marker-icon.wp-marker {
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: grab;
+}
+
+.leaflet-marker-icon.wp-marker:active {
+  cursor: grabbing;
+}
+
+.leaflet-marker-icon.wp-marker.is-start {
+  background: #2e7d32;
+}
+
+.leaflet-marker-icon.wp-marker.is-end {
+  background: #c62828;
+}

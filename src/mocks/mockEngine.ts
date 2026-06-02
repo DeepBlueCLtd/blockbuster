@@ -229,34 +229,6 @@ function shortestPath(graph: Graph, src: CellId, dst: CellId, params: CostParams
   return path[0] === src ? path : [src, dst];
 }
 
-/** Order >2 waypoints greedily by hex proximity (placeholder for real TSP). */
-function orderWaypoints(graph: Graph, waypoints: CellId[]): CellId[] {
-  if (waypoints.length <= 2) return waypoints;
-  const remaining = new Set(waypoints.slice(1));
-  const start = waypoints[0]!;
-  const order: CellId[] = [start];
-  let current = start;
-  while (remaining.size > 0) {
-    let nearest: CellId | undefined;
-    let bestDist = Infinity;
-    const c0 = graph.centerOf(current);
-    for (const candidate of remaining) {
-      const c1 = graph.centerOf(candidate);
-      if (!c0 || !c1) continue;
-      const d = worldDistance(c0, c1);
-      if (d < bestDist) {
-        bestDist = d;
-        nearest = candidate;
-      }
-    }
-    if (nearest === undefined) break;
-    order.push(nearest);
-    remaining.delete(nearest);
-    current = nearest;
-  }
-  return order;
-}
-
 function buildCoa(id: string, label: string, path: CellId[], graph: Graph, params: CostParams): Coa {
   const steps: CoaCellStep[] = [];
   const riskTotals = zeroRisk();
@@ -290,7 +262,11 @@ function buildCoa(id: string, label: string, path: CellId[], graph: Graph, param
 /** Synchronous core of the mock planner (used by fixtures and tests). */
 export function planRoutesSync(request: RouteRequest): RoutePlan {
   const graph = buildGraph(request.grid, request.risk);
-  const ordered = orderWaypoints(graph, request.waypoints);
+  // Waypoints are visited in the exact order the analyst arranged them — the UI
+  // owns the sequence (add / reorder / relocate), so the planner must not shuffle
+  // them. Diversity comes from how each strategy paths *between* consecutive
+  // waypoints, not from reordering the stops.
+  const sequence = request.waypoints;
 
   const seen = new Set<string>();
   const coas: Coa[] = [];
@@ -298,8 +274,8 @@ export function planRoutesSync(request: RouteRequest): RoutePlan {
     const stratParams = scaleParams(request.params, strategy);
     // Build the path under the strategy's bias…
     const full: CellId[] = [];
-    for (let i = 0; i < ordered.length - 1; i++) {
-      const seg = shortestPath(graph, ordered[i]!, ordered[i + 1]!, stratParams);
+    for (let i = 0; i < sequence.length - 1; i++) {
+      const seg = shortestPath(graph, sequence[i]!, sequence[i + 1]!, stratParams);
       full.push(...(i === 0 ? seg : seg.slice(1)));
     }
     const signature = full.join('>');
