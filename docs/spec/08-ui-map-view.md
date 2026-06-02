@@ -22,15 +22,23 @@ layering and hit-testing for free.
 ## Components (scaffolded; refine)
 
 - **`MapView`** — `MapContainer` (crs `Simple`, fitted to bounds) hosting the
-  layers + the toolbar overlay.
+  layers + the toolbar / legend overlays.
+- **`TerrainLayer`** — the underlying map. Samples the continuous `TerrainField`
+  (`store.field`) onto a raster, colours it by `BIOME_COLORS` with light
+  elevation relief, and adds it as an `L.imageOverlay` in a dedicated low-z
+  `terrain` pane beneath the hexes. Independent of hex size; toggled by
+  `store.showTerrain`.
 - **`HexGridLayer`** — one `<Polygon>` per cell from `cell.vertices`, filled by
   `heatColor(intensity)` where intensity is the selected single risk or the
   normalised composite cost (`selectCellCost`). Stroke marks selection / hover /
-  waypoint. Handlers: `click → selectCell`, `mouseover/out → hoverCell`.
+  waypoint. Handlers: `click → selectCell`, `mouseover/out → hoverCell`. Toggled
+  by `store.showHexGrid`.
 - **`RouteLayer`** — a `<Polyline>` per COA (selected one emphasised) along cell
   centres; `<CircleMarker>` + tooltip per waypoint (Start/WPn/End).
-- **`MapToolbar`** — floating controls: shade-by (composite or a single risk),
-  hex-size slider, live cell count / planning indicator.
+- **`MapToolbar`** — floating controls: layer toggles (base map / hex grid),
+  shade-by (composite or a single risk), hex-size slider, live cell count /
+  planning indicator.
+- **`BiomeLegend`** — key to the terrain colours; shown while the base map is on.
 
 ## Interactions
 
@@ -64,8 +72,9 @@ directly in a stub. You can build the whole pane before any real engine exists.
 
 ## Open questions
 
-- Show the underlying terrain (biome colours) as a base layer beneath the risk
-  shading toggle? Nice-to-have; `BIOME_COLORS` already exists in `theme.ts`.
+- ~~Show the underlying terrain (biome colours) as a base layer beneath the risk
+  shading toggle?~~ **Done** — `TerrainLayer` renders the continuous field as an
+  image overlay; the base map and hex grid each have a toolbar toggle.
 - Per-cell mini risk table on the map itself (vs only in the inspector)? The brief
   mentions it; v1 puts the full table in the inspector and uses shading on the
   map. Revisit if analysts want at-a-glance tables (e.g. at high zoom).

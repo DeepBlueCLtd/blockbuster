@@ -5,6 +5,7 @@ import type {
   HexGrid,
   RiskType,
   RoutePlan,
+  TerrainField,
   TerrainSample,
   WorldExtent,
   Km,
@@ -29,6 +30,8 @@ export interface BlockbusterState {
 
   // --- Derived world (rebuilt on regenerate) ---
   grid: HexGrid | null;
+  /** Continuous terrain function, kept so the base map can sample it at any resolution. */
+  field: TerrainField | null;
   terrain: Map<CellId, TerrainSample>;
   riskStates: Map<CellId, CellRiskState>;
 
@@ -47,6 +50,10 @@ export interface BlockbusterState {
   hoveredCellId: CellId | null;
   activeTab: ActiveTab;
   displayRisk: DisplayRisk;
+  /** Whether the continuous terrain base map is drawn. */
+  showTerrain: boolean;
+  /** Whether the hex grid (with risk shading) is drawn over the map. */
+  showHexGrid: boolean;
 
   // --- Actions ---
   /** Build (or rebuild) the world from the current seed/extent/hexSize. */
@@ -67,4 +74,6 @@ export interface BlockbusterState {
   hoverCell: (cellId: CellId | null) => void;
   setActiveTab: (tab: ActiveTab) => void;
   setDisplayRisk: (risk: DisplayRisk) => void;
+  setShowTerrain: (show: boolean) => void;
+  setShowHexGrid: (show: boolean) => void;
 }

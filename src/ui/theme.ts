@@ -23,6 +23,16 @@ export const BIOME_COLORS: Record<Biome, string> = {
   water: '#4fc3f7',
 };
 
+/** Human-readable biome names for the map legend. */
+export const BIOME_LABELS: Record<Biome, string> = {
+  woodland: 'Woodland',
+  town: 'Town',
+  savannah: 'Savannah',
+  mountains: 'Mountains',
+  grassland: 'Grassland',
+  water: 'Water',
+};
+
 /** Map a normalised intensity (0…1) to a green→red heat colour. */
 export function heatColor(t: number): string {
   const hue = (1 - clamp01(t)) * 120;

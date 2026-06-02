@@ -2,8 +2,12 @@ import { RISK_LABELS, RISK_TYPES } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import type { DisplayRisk } from '@/state/types';
 
-/** Floating controls over the map: what to shade by, hex size, live stats. */
+/** Floating controls over the map: layer toggles, what to shade by, hex size, live stats. */
 export function MapToolbar() {
+  const showTerrain = useBlockbusterStore((s) => s.showTerrain);
+  const setShowTerrain = useBlockbusterStore((s) => s.setShowTerrain);
+  const showHexGrid = useBlockbusterStore((s) => s.showHexGrid);
+  const setShowHexGrid = useBlockbusterStore((s) => s.setShowHexGrid);
   const displayRisk = useBlockbusterStore((s) => s.displayRisk);
   const setDisplayRisk = useBlockbusterStore((s) => s.setDisplayRisk);
   const hexSize = useBlockbusterStore((s) => s.hexSize);
@@ -13,10 +17,29 @@ export function MapToolbar() {
 
   return (
     <div className="map-toolbar">
+      <div className="map-toggles">
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showTerrain}
+            onChange={(event) => setShowTerrain(event.target.checked)}
+          />
+          Base map
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showHexGrid}
+            onChange={(event) => setShowHexGrid(event.target.checked)}
+          />
+          Hex grid
+        </label>
+      </div>
       <label>
         Shade by{' '}
         <select
           value={displayRisk}
+          disabled={!showHexGrid}
           onChange={(event) => setDisplayRisk(event.target.value as DisplayRisk)}
         >
           <option value="composite">Composite cost</option>
