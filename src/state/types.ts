@@ -17,7 +17,7 @@ import type {
 export type DisplayRisk = RiskType | 'composite';
 
 /** Right-hand tab selection. */
-export type ActiveTab = 'risk' | 'coas' | 'extra';
+export type ActiveTab = 'waypoints' | 'coas' | 'extra';
 
 /** The armed extra-risk drawing tool, or null when none is active. */
 export type DrawMode = ZoneKind | null;
