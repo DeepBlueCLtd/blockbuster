@@ -1,6 +1,7 @@
+import type { CSSProperties } from 'react';
 import { RISK_LABELS, RISK_TYPES } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
-import { RISK_COLORS } from '@/ui/theme';
+import { coaColor, RISK_COLORS } from '@/ui/theme';
 import { Slider } from '@/ui/components/Slider';
 import { StackedBarChart } from './charts/StackedBarChart';
 
@@ -32,10 +33,11 @@ export function CoaPanel() {
             : 'No routes yet. Add at least two waypoints on the Waypoints tab.'}
         </p>
       ) : (
-        plan.coas.map((coa) => (
+        plan.coas.map((coa, index) => (
           <section
             key={coa.id}
             className={coa.id === selectedCoaId ? 'coa coa-selected' : 'coa'}
+            style={{ '--coa-color': coaColor(index) } as CSSProperties}
             onClick={() => selectCoa(coa.id)}
           >
             <header className="coa-head">
