@@ -10,10 +10,7 @@ import {
   RISK_TYPES,
   toHexGridDto,
 } from '@domain';
-import { createMockEngine } from '@/mocks/mockEngine';
-import { createGridBuilder } from '@/engine/hexgrid';
-import { createRiskEngine } from '@/engine/risk';
-import { createMapGenerator } from '@/engine/mapgen';
+import { createEngine } from '@/engine';
 import type { BlockbusterState } from './types';
 
 /** Pick two opposite-corner cells to seed routing with something to show. */
@@ -227,18 +224,13 @@ export function createBlockbusterStore(engine: Engine) {
 }
 
 /**
- * The app-wide store. Real engine modules are adopted one at a time by composing
- * a hybrid {@link Engine} over the mock (see docs/spec/11 "Hybrid engine"); the
- * remaining mock modules drop out as their real counterparts land. Currently
- * live: map generation, the hex grid builder and the risk model (routing still
- * on the mock).
+ * The app-wide store, wired to the real engine. All four modules (map
+ * generation, hex grid, risk model, routing) now ship under `src/engine/*`; the
+ * mock remains only as the living reference and test fixture. Routing runs in a
+ * Web Worker (the default of `createRoutePlanner`), so the search never blocks
+ * the UI.
  */
-export const useBlockbusterStore = createBlockbusterStore({
-  ...createMockEngine(),
-  mapGenerator: createMapGenerator(),
-  gridBuilder: createGridBuilder(),
-  riskEngine: createRiskEngine(),
-});
+export const useBlockbusterStore = createBlockbusterStore(createEngine());
 
 // --- Selectors (pure, reusable derivations) -------------------------------
 

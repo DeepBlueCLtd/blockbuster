@@ -16,6 +16,14 @@ export interface RouteRequest {
   waypoints: CellId[];
   /** How many distinct COAs to return (default 3). */
   coaCount: number;
+  /**
+   * Optional hard blocks: cells a route may not pass *through* (e.g. terrain the
+   * model treats as untraversable). Waypoints are always reachable — if removing
+   * these would strand a leg, the planner falls back to a passable route for that
+   * leg. Omit (or leave empty) to keep every cell passable (the v1 default, where
+   * difficult terrain is discouraged by cost rather than blocked).
+   */
+  impassable?: CellId[];
 }
 
 /** One cell along a COA, with the cost it contributed, split by risk channel. */
