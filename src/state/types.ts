@@ -15,7 +15,7 @@ import type {
 export type DisplayRisk = RiskType | 'composite';
 
 /** Right-hand tab selection. */
-export type ActiveTab = 'risk' | 'coas';
+export type ActiveTab = 'risk' | 'waypoints' | 'coas';
 
 /**
  * The complete application state plus the actions that mutate it. The store is
