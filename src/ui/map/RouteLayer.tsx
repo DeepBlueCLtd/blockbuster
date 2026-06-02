@@ -3,7 +3,13 @@ import { divIcon } from 'leaflet';
 import type { LatLngExpression, LeafletEvent, Marker as LeafletMarker } from 'leaflet';
 import type { CellId } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
+import { COA_HALO_COLOR, coaColor } from '@/ui/theme';
 import { worldToLatLng } from './projection';
+
+/** Stroke width of a COA line — the selected one is drawn thicker. */
+function lineWeight(selected: boolean): number {
+  return selected ? 6 : 3;
+}
 
 /** Role label for the waypoint at `index` in a sequence of `count`. */
 function roleOf(index: number, count: number): string {
@@ -57,22 +63,44 @@ export function RouteLayer() {
     if (center) marker.setLatLng([center.y, center.x]);
   };
 
+  // Colour each COA by its rank (best route first) and draw the selected one
+  // last so its thicker line sits above the rest. A light halo under every line
+  // keeps the dark shades legible over whatever the map shows beneath them.
+  const routes = (plan?.coas ?? [])
+    .map((coa, index) => ({
+      id: coa.id,
+      color: coaColor(index),
+      selected: coa.id === selectedCoaId,
+      points: toPoints(coa.path),
+    }))
+    .sort((a, b) => Number(a.selected) - Number(b.selected));
+
   return (
     <>
-      {plan?.coas.map((coa) => {
-        const selected = coa.id === selectedCoaId;
-        return (
-          <Polyline
-            key={coa.id}
-            positions={toPoints(coa.path)}
-            pathOptions={{
-              color: selected ? '#1565c0' : '#90a4ae',
-              weight: selected ? 5 : 2,
-              opacity: selected ? 0.9 : 0.45,
-            }}
-          />
-        );
-      })}
+      {/* All halos first, so none is painted over a neighbouring COA's line. */}
+      {routes.map((route) => (
+        <Polyline
+          key={`halo-${route.id}`}
+          positions={route.points}
+          interactive={false}
+          pathOptions={{
+            color: COA_HALO_COLOR,
+            weight: lineWeight(route.selected) + 4,
+            opacity: 0.6,
+          }}
+        />
+      ))}
+      {routes.map((route) => (
+        <Polyline
+          key={route.id}
+          positions={route.points}
+          pathOptions={{
+            color: route.color,
+            weight: lineWeight(route.selected),
+            opacity: route.selected ? 1 : 0.85,
+          }}
+        />
+      ))}
 
       {waypoints.map((id, index) => {
         const center = grid.get(id)?.center;

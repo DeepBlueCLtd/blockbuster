@@ -1,6 +1,7 @@
+import type { CSSProperties } from 'react';
 import { RISK_LABELS, RISK_TYPES } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
-import { RISK_COLORS } from '@/ui/theme';
+import { coaColor, RISK_COLORS } from '@/ui/theme';
 import { StackedBarChart } from './charts/StackedBarChart';
 
 /** The "COAs" tab: the three per-cell cost charts for the generated routes. */
@@ -32,10 +33,11 @@ export function CoaPanel() {
       ) : (
         <>
           <RiskLegend />
-          {plan.coas.map((coa) => (
+          {plan.coas.map((coa, index) => (
             <section
               key={coa.id}
               className={coa.id === selectedCoaId ? 'coa coa-selected' : 'coa'}
+              style={{ '--coa-color': coaColor(index) } as CSSProperties}
               onClick={() => selectCoa(coa.id)}
             >
               <header className="coa-head">
