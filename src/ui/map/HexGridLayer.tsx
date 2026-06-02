@@ -1,0 +1,69 @@
+import { useMemo } from 'react';
+import { Polygon } from 'react-leaflet';
+import type { LeafletEventHandlerFnMap } from 'leaflet';
+import { cellRiskCost, effectiveProfile } from '@domain';
+import { useBlockbusterStore } from '@/state/store';
+import { heatColor } from '@/ui/theme';
+import { worldRingToLatLng } from './projection';
+
+/** Renders the hex grid as Leaflet polygons, shaded by the active risk view. */
+export function HexGridLayer() {
+  const grid = useBlockbusterStore((s) => s.grid);
+  const riskStates = useBlockbusterStore((s) => s.riskStates);
+  const displayRisk = useBlockbusterStore((s) => s.displayRisk);
+  const costParams = useBlockbusterStore((s) => s.costParams);
+  const selectedCellId = useBlockbusterStore((s) => s.selectedCellId);
+  const hoveredCellId = useBlockbusterStore((s) => s.hoveredCellId);
+  const waypoints = useBlockbusterStore((s) => s.waypoints);
+  const selectCell = useBlockbusterStore((s) => s.selectCell);
+  const hoverCell = useBlockbusterStore((s) => s.hoverCell);
+
+  const maxCost = useMemo(() => {
+    let max = 1e-6;
+    for (const state of riskStates.values()) {
+      max = Math.max(max, cellRiskCost(effectiveProfile(state), costParams));
+    }
+    return max;
+  }, [riskStates, costParams]);
+
+  if (!grid) return null;
+  const waypointSet = new Set(waypoints);
+
+  return (
+    <>
+      {grid.cells.map((cell) => {
+        const state = riskStates.get(cell.id);
+        const eff = state ? effectiveProfile(state) : null;
+        const intensity = !eff
+          ? 0
+          : displayRisk === 'composite'
+            ? cellRiskCost(eff, costParams) / maxCost
+            : eff[displayRisk];
+
+        const isSelected = cell.id === selectedCellId;
+        const isHovered = cell.id === hoveredCellId;
+        const isWaypoint = waypointSet.has(cell.id);
+
+        const handlers: LeafletEventHandlerFnMap = {
+          click: () => selectCell(cell.id),
+          mouseover: () => hoverCell(cell.id),
+          mouseout: () => hoverCell(null),
+        };
+
+        return (
+          <Polygon
+            key={cell.id}
+            positions={worldRingToLatLng(cell.vertices)}
+            eventHandlers={handlers}
+            pathOptions={{
+              color: isSelected ? '#111' : isWaypoint ? '#0d47a1' : 'rgba(60,60,60,0.35)',
+              weight: isSelected || isWaypoint ? 3 : isHovered ? 2 : 1,
+              fillColor: heatColor(intensity),
+              fillOpacity: isHovered ? 0.75 : 0.55,
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
