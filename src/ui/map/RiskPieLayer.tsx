@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Pane, Polygon } from 'react-leaflet';
-import { effectiveProfile, riskCostBreakdown } from '@domain';
+import { applyZoneOffsets, effectiveProfile, riskCostBreakdown } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { RISK_COLORS } from '@/ui/theme';
 import { worldRingToLatLng } from './projection';
@@ -8,15 +8,16 @@ import { cellInradius, PIE_RADIUS_FRACTION, riskPieSlices } from './pie';
 
 /**
  * Optional overlay: each hex drawn as a pie whose slices are the per-risk shares
- * of that cell's cost. The breakdown comes from `riskCostBreakdown`, so the
- * slices re-proportion live as the appetite sliders move. Non-interactive, so
- * clicks/hover fall through to {@link HexGridLayer} beneath. Toggled by
- * `store.showRiskPies`.
+ * of that cell's cost. The breakdown comes from `riskCostBreakdown` of the
+ * zone-adjusted profile, so the slices re-proportion live as the appetite
+ * sliders move or extra-risk zones change. Non-interactive, so clicks/hover fall
+ * through to {@link HexGridLayer} beneath. Toggled by `store.showRiskPies`.
  */
 export function RiskPieLayer() {
   const grid = useBlockbusterStore((s) => s.grid);
   const showRiskPies = useBlockbusterStore((s) => s.showRiskPies);
   const riskStates = useBlockbusterStore((s) => s.riskStates);
+  const zoneContribution = useBlockbusterStore((s) => s.zoneContribution);
   const costParams = useBlockbusterStore((s) => s.costParams);
 
   const pies = useMemo(() => {
@@ -24,7 +25,8 @@ export function RiskPieLayer() {
     return grid.cells.flatMap((cell) => {
       const state = riskStates.get(cell.id);
       if (!state) return [];
-      const breakdown = riskCostBreakdown(effectiveProfile(state), costParams);
+      const eff = applyZoneOffsets(effectiveProfile(state), zoneContribution.get(cell.id));
+      const breakdown = riskCostBreakdown(eff, costParams);
       const radius = cellInradius(cell.center, cell.vertices) * PIE_RADIUS_FRACTION;
       return riskPieSlices(cell.center, radius, breakdown).map((slice) => ({
         key: `${cell.id}-${slice.risk}`,
@@ -32,7 +34,7 @@ export function RiskPieLayer() {
         positions: worldRingToLatLng(slice.ring),
       }));
     });
-  }, [grid, showRiskPies, riskStates, costParams]);
+  }, [grid, showRiskPies, riskStates, zoneContribution, costParams]);
 
   if (pies.length === 0) return null;
 

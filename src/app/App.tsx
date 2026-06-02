@@ -4,6 +4,7 @@ import { Tabs } from '@/ui/components/Tabs';
 import { MapView } from '@/ui/map/MapView';
 import { WaypointsPanel } from '@/ui/panels/WaypointsPanel';
 import { CoaPanel } from '@/ui/panels/CoaPanel';
+import { ExtraRiskPanel } from '@/ui/panels/ExtraRiskPanel';
 import { CellInspector } from '@/ui/panels/CellInspector';
 import type { ActiveTab } from '@/state/types';
 
@@ -11,6 +12,7 @@ import type { ActiveTab } from '@/state/types';
 const TABS: ReadonlyArray<{ id: ActiveTab; label: string }> = [
   { id: 'waypoints', label: 'Waypoints' },
   { id: 'coas', label: 'COAs' },
+  { id: 'extra', label: 'Extra risk' },
 ];
 
 export function App() {
@@ -40,7 +42,13 @@ export function App() {
         </header>
         <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
         <div className="tab-body">
-          {activeTab === 'waypoints' ? <WaypointsPanel /> : <CoaPanel />}
+          {activeTab === 'waypoints' ? (
+            <WaypointsPanel />
+          ) : activeTab === 'coas' ? (
+            <CoaPanel />
+          ) : (
+            <ExtraRiskPanel />
+          )}
         </div>
         <CellInspector />
       </aside>

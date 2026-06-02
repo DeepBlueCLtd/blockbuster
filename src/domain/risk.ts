@@ -54,6 +54,24 @@ export function effectiveProfile(state: CellRiskState): RiskProfile {
   return out;
 }
 
+/**
+ * Fold extra-risk zone offsets (signed, per channel) into a profile, clamping
+ * back into [0, 1]. Absent or zero offsets leave the channel untouched. Returns
+ * the input profile unchanged when there are no offsets.
+ */
+export function applyZoneOffsets(
+  profile: RiskProfile,
+  offsets: Partial<Record<RiskType, number>> | undefined,
+): RiskProfile {
+  if (!offsets) return profile;
+  const out = { ...profile };
+  for (const risk of RISK_TYPES) {
+    const delta = offsets[risk];
+    if (delta) out[risk] = clamp01(out[risk] + delta);
+  }
+  return out;
+}
+
 /** Which channels of a cell have been overridden (for the highlight UI). */
 export function overriddenRisks(state: CellRiskState): RiskType[] {
   return RISK_TYPES.filter((risk) => state.overrides[risk] !== undefined);

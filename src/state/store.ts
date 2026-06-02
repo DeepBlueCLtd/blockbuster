@@ -1,17 +1,43 @@
 import { create } from 'zustand';
-import type { CellId, CellRiskState, Engine, HexGrid, RiskProfile, RouteRequest } from '@domain';
+import type {
+  CellId,
+  CellRiskState,
+  Engine,
+  HexGrid,
+  RiskProfile,
+  RiskType,
+  RiskZone,
+  RouteRequest,
+} from '@domain';
 import {
+  applyZoneOffsets,
   cellRiskCost,
   clamp01,
+  clampZoneOffset,
   DEFAULT_COST_PARAMS,
   DEFAULT_EXTENT,
   DEFAULT_HEX_SIZE_KM,
   effectiveProfile,
   RISK_TYPES,
   toHexGridDto,
+  zoneOffsetsForCell,
 } from '@domain';
 import { createEngine } from '@/engine';
 import type { BlockbusterState } from './types';
+
+/** Per-cell, area-weighted zone offsets. Recomputed when zones or the grid change. */
+function computeZoneContribution(
+  grid: HexGrid | null,
+  zones: RiskZone[],
+): Map<CellId, Partial<Record<RiskType, number>>> {
+  const out = new Map<CellId, Partial<Record<RiskType, number>>>();
+  if (!grid || zones.length === 0) return out;
+  for (const cell of grid.cells) {
+    const offsets = zoneOffsetsForCell(cell.vertices, zones);
+    if (Object.keys(offsets).length > 0) out.set(cell.id, offsets);
+  }
+  return out;
+}
 
 /** Pick two opposite-corner cells to seed routing with something to show. */
 function defaultWaypoints(grid: HexGrid): CellId[] {
@@ -46,9 +72,12 @@ export function createBlockbusterStore(engine: Engine) {
       field: null,
       terrain: new Map(),
       riskStates: new Map(),
+      zoneContribution: new Map(),
 
       costParams: DEFAULT_COST_PARAMS,
       waypoints: [],
+      zones: [],
+      zoneRiskType: RISK_TYPES[0],
 
       plan: null,
       planning: false,
@@ -57,6 +86,8 @@ export function createBlockbusterStore(engine: Engine) {
       selectedCellId: null,
       selectedCoaId: null,
       hoveredCellId: null,
+      selectedZoneId: null,
+      drawMode: null,
       activeTab: 'coas',
       displayRisk: 'composite',
       // Start on the underlying terrain map; the hex grid is a switchable overlay.
@@ -86,6 +117,12 @@ export function createBlockbusterStore(engine: Engine) {
         let waypoints = s.waypoints.filter((id) => grid.get(id));
         if (waypoints.length < 2) waypoints = defaultWaypoints(grid);
 
+        // Zones are pinned to the basemap they were drawn on, so they are dropped
+        // when the seed changes (a new world) but kept across a same-seed rebuild
+        // such as a hex-size change (the basemap is unchanged; only the grid moved).
+        const basemapChanged = useSeed !== s.seed;
+        const zones = basemapChanged ? [] : s.zones;
+
         set({
           seed: useSeed,
           grid,
@@ -93,6 +130,10 @@ export function createBlockbusterStore(engine: Engine) {
           terrain,
           riskStates,
           waypoints,
+          zones,
+          // Coverage is re-derived against the new grid (kept zones, new hex layout).
+          zoneContribution: computeZoneContribution(grid, zones),
+          selectedZoneId: basemapChanged ? null : s.selectedZoneId,
           selectedCellId: null,
           selectedCoaId: null,
         });
@@ -186,7 +227,8 @@ export function createBlockbusterStore(engine: Engine) {
         }
         set({ planning: true, planError: null });
         const risk: Record<CellId, RiskProfile> = {};
-        for (const [id, state] of s.riskStates) risk[id] = effectiveProfile(state);
+        for (const [id, state] of s.riskStates)
+          risk[id] = applyZoneOffsets(effectiveProfile(state), s.zoneContribution.get(id));
         const request: RouteRequest = {
           grid: toHexGridDto(s.grid),
           risk,
@@ -221,6 +263,47 @@ export function createBlockbusterStore(engine: Engine) {
       setShowTerrain: (show) => set({ showTerrain: show }),
       setShowHexGrid: (show) => set({ showHexGrid: show }),
       setShowRiskPies: (show) => set({ showRiskPies: show }),
+
+      addZone: (zone) => {
+        const s = get();
+        const zones = [...s.zones, zone];
+        set({
+          zones,
+          selectedZoneId: zone.id,
+          zoneContribution: computeZoneContribution(s.grid, zones),
+        });
+        scheduleReplan();
+      },
+
+      updateZone: (id, patch) => {
+        const s = get();
+        const next =
+          patch.offset === undefined ? patch : { ...patch, offset: clampZoneOffset(patch.offset) };
+        const zones = s.zones.map((z) => (z.id === id ? { ...z, ...next } : z));
+        // Only the channel or offset changes a cell's score (a rename does not).
+        const affectsScore = next.risk !== undefined || next.offset !== undefined;
+        set(
+          affectsScore
+            ? { zones, zoneContribution: computeZoneContribution(s.grid, zones) }
+            : { zones },
+        );
+        if (affectsScore) scheduleReplan();
+      },
+
+      removeZone: (id) => {
+        const s = get();
+        const zones = s.zones.filter((z) => z.id !== id);
+        set({
+          zones,
+          selectedZoneId: s.selectedZoneId === id ? null : s.selectedZoneId,
+          zoneContribution: computeZoneContribution(s.grid, zones),
+        });
+        scheduleReplan();
+      },
+
+      selectZone: (id) => set({ selectedZoneId: id }),
+      setDrawMode: (mode) => set({ drawMode: mode }),
+      setZoneRiskType: (risk) => set({ zoneRiskType: risk }),
     };
   });
 }
@@ -236,22 +319,27 @@ export const useBlockbusterStore = createBlockbusterStore(createEngine());
 
 // --- Selectors (pure, reusable derivations) -------------------------------
 
-/** Effective (post-override) risk profile for a cell, or null if unknown. */
+/**
+ * Effective risk profile for a cell — base, overrides, then extra-risk zones —
+ * or null if unknown. This is the profile the planner actually costs.
+ */
 export function selectEffectiveProfile(
   state: BlockbusterState,
   cellId: CellId | null,
 ): RiskProfile | null {
   if (!cellId) return null;
   const risk = state.riskStates.get(cellId);
-  return risk ? effectiveProfile(risk) : null;
+  if (!risk) return null;
+  return applyZoneOffsets(effectiveProfile(risk), state.zoneContribution.get(cellId));
 }
 
 /**
- * Composite traversal cost of a cell under the current appetite — used to shade
- * the map when `displayRisk === 'composite'`.
+ * Composite traversal cost of a cell under the current appetite (including zone
+ * offsets) — used to shade the map when `displayRisk === 'composite'`.
  */
 export function selectCellCost(state: BlockbusterState, cellId: CellId): number {
   const risk = state.riskStates.get(cellId);
   if (!risk) return 0;
-  return cellRiskCost(effectiveProfile(risk), state.costParams);
+  const eff = applyZoneOffsets(effectiveProfile(risk), state.zoneContribution.get(cellId));
+  return cellRiskCost(eff, state.costParams);
 }

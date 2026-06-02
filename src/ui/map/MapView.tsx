@@ -9,6 +9,8 @@ import { RouteLayer } from './RouteLayer';
 import { MapToolbar } from './MapToolbar';
 import { BiomeLegend } from './BiomeLegend';
 import { RiskPieLegend } from './RiskPieLegend';
+import { ExtraRiskLayer } from './extra-risk/ExtraRiskLayer';
+import { ExtraRiskDraw } from './extra-risk/ExtraRiskDraw';
 
 /**
  * The map pane. Uses `CRS.Simple` because the world is a fictitious flat
@@ -16,6 +18,7 @@ import { RiskPieLegend } from './RiskPieLegend';
  */
 export function MapView() {
   const extent = useBlockbusterStore((s) => s.extent);
+  const activeTab = useBlockbusterStore((s) => s.activeTab);
   const bounds: LatLngBoundsExpression = [
     [0, 0],
     [extent.height, extent.width],
@@ -39,6 +42,8 @@ export function MapView() {
         <HexGridLayer />
         <RiskPieLayer />
         <RouteLayer />
+        <ExtraRiskLayer />
+        {activeTab === 'extra' && <ExtraRiskDraw />}
       </MapContainer>
       <BiomeLegend />
       <RiskPieLegend />
