@@ -65,8 +65,47 @@ body,
   gap: 2px;
 }
 
+.map-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.map-toggles .toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.map-toolbar select:disabled {
+  opacity: 0.5;
+}
+
 .map-stat {
   color: var(--muted);
+}
+
+/* --- Biome legend (over the base map) --- */
+.map-legend {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1000;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 60%;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+}
+
+.map-legend .legend-item i {
+  border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
 /* --- Side pane --- */

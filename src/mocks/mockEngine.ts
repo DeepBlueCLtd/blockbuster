@@ -36,6 +36,7 @@ import {
   clamp01,
   DEFAULT_HEX_SIZE_KM,
   movementCost,
+  mulberry32,
   RISK_TYPES,
   riskCostBreakdown,
   toCellId,
@@ -44,22 +45,109 @@ import {
 import { axialNeighbors, buildHexGrid } from './hexMath';
 
 // --- Map generation -------------------------------------------------------
+//
+// The world is laid out as a handful of coherent *zones* rather than a fine
+// random fuzz: a mountain range, a few towns (each wrapped in a halo of bandit
+// activity) and a moisture gradient that yields a savannah belt on the dry side
+// and woodland on the wet side. Risk is derived from these, so high-risk areas
+// read as recognisable regions instead of speckle. Everything is a pure
+// function of the seed.
 
-/** Cheap layered-sine "noise" in [0, 1]; not real Perlin, just plausible. */
-function fbm(x: number, y: number, seed: number): number {
-  const s = seed * 0.001;
-  let n = Math.sin(x * 0.25 + s) * Math.cos(y * 0.21 - s);
-  n += 0.5 * Math.sin(x * 0.55 - s * 2 + 1.3) * Math.cos(y * 0.49 + s);
-  n += 0.25 * Math.sin(x * 1.1 + s * 3) * Math.cos(y * 0.97 - s);
-  return clamp01((n / 1.75) * 0.5 + 0.5);
+/** Lattice spacing of the base noise, in km — large enough to form zones. */
+const FEATURE_KM = 11;
+/** Half-width of the mountain band, in km. */
+const RIDGE_KM = 4.5;
+/** Radius of a town's influence (its bandit halo), in km. */
+const TOWN_KM = 7;
+/** Highest elevation the generator emits, in metres. */
+const PEAK_M = 2600;
+
+/** 32-bit integer hash of a lattice point → [0, 1). Deterministic, no sine artefacts. */
+function hashLattice(ix: number, iy: number, seed: number): number {
+  let h = seed | 0;
+  h = Math.imul(h ^ (ix | 0), 0x85ebca6b);
+  h = Math.imul(h ^ (iy | 0), 0xc2b2ae35);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0x27d4eb2f);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
-function classifyBiome(elevation: number, moisture: number, town: number): Biome {
-  if (town > 0.92) return 'town';
-  if (moisture > 0.82 && elevation < 0.3) return 'water';
-  if (elevation > 0.72) return 'mountains';
-  if (moisture > 0.6) return 'woodland';
-  if (moisture < 0.35) return 'savannah';
+function smoothstep(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+/** Bilinearly interpolated value noise in [0, 1] at unit lattice frequency. */
+function valueNoise(x: number, y: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = smoothstep(x - ix);
+  const fy = smoothstep(y - iy);
+  const v00 = hashLattice(ix, iy, seed);
+  const v10 = hashLattice(ix + 1, iy, seed);
+  const v01 = hashLattice(ix, iy + 1, seed);
+  const v11 = hashLattice(ix + 1, iy + 1, seed);
+  const top = v00 + (v10 - v00) * fx;
+  const bottom = v01 + (v11 - v01) * fx;
+  return top + (bottom - top) * fy;
+}
+
+/** Fractal (multi-octave) value noise in [0, 1]; coherent at the chosen scale. */
+function fbm(x: number, y: number, seed: number, octaves = 4): number {
+  let amp = 0.5;
+  let freq = 1;
+  let sum = 0;
+  let norm = 0;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * valueNoise(x * freq, y * freq, seed + o * 1013);
+    norm += amp;
+    amp *= 0.5;
+    freq *= 2;
+  }
+  return sum / norm;
+}
+
+interface Town {
+  x: number;
+  y: number;
+}
+
+/** Deterministic, seed-derived layout: where the towns sit and how the range runs. */
+interface MapFeatures {
+  towns: readonly Town[];
+  /** A point on the mountain ridge line plus its unit direction. */
+  ridge: { x: number; y: number; dx: number; dy: number };
+  /** Unit vector along which the land dries out (towards the savannah side). */
+  dry: { dx: number; dy: number };
+}
+
+function buildFeatures(extent: WorldExtent, seed: number): MapFeatures {
+  const rng = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+  const margin = Math.min(extent.width, extent.height) * 0.14;
+  const towns: Town[] = [];
+  for (let i = 0; i < 3; i++) {
+    towns.push({
+      x: rng.range(margin, extent.width - margin),
+      y: rng.range(margin, extent.height - margin),
+    });
+  }
+  const ridgeAngle = rng.range(0, Math.PI);
+  const ridge = {
+    x: rng.range(extent.width * 0.3, extent.width * 0.7),
+    y: rng.range(extent.height * 0.3, extent.height * 0.7),
+    dx: Math.cos(ridgeAngle),
+    dy: Math.sin(ridgeAngle),
+  };
+  const dryAngle = rng.range(0, Math.PI * 2);
+  return { towns, ridge, dry: { dx: Math.cos(dryAngle), dy: Math.sin(dryAngle) } };
+}
+
+function classifyBiome(elevation: number, moisture: number, settlement: number): Biome {
+  if (settlement > 0.72) return 'town';
+  if (elevation > 0.64) return 'mountains';
+  if (moisture > 0.72 && elevation < 0.42) return 'water';
+  if (moisture > 0.55) return 'woodland';
+  if (moisture < 0.4) return 'savannah';
   return 'grassland';
 }
 
@@ -67,22 +155,61 @@ export function createMockMapGenerator(): MapGenerator {
   return {
     generate(config: MapGenConfig): TerrainField {
       const { extent, seed } = config;
+      const featureKm = FEATURE_KM / (config.tuning?.featureScale ?? 1);
+      const features = buildFeatures(extent, seed);
+      const cx = extent.width / 2;
+      const cy = extent.height / 2;
+      const halfSpan = Math.max(extent.width, extent.height) / 2;
+
       return {
         extent,
         seed,
         sample(point: WorldPoint): TerrainSample {
-          const elevationN = fbm(point.x, point.y, seed);
-          const moistureN = fbm(point.x + 100, point.y - 100, seed + 17);
-          const townN = fbm(point.x * 1.7 + 50, point.y * 1.7 + 50, seed + 91);
-          const biome = classifyBiome(elevationN, moistureN, townN);
-          const temperature = 30 - elevationN * 28;
+          const fx = point.x / featureKm;
+          const fy = point.y / featureKm;
+
+          // Mountain range: elevation rises in a band around the ridge line.
+          const perp = Math.abs(
+            (point.x - features.ridge.x) * features.ridge.dy -
+              (point.y - features.ridge.y) * features.ridge.dx,
+          );
+          const ridgeBoost = Math.exp(-((perp / RIDGE_KM) ** 2));
+          const elevation = clamp01(fbm(fx, fy, seed + 11) * 0.55 + ridgeBoost * 0.7);
+
+          // Moisture: a broad gradient (drier on one side → savannah belt) plus noise.
+          const along =
+            ((point.x - cx) * features.dry.dx + (point.y - cy) * features.dry.dy) / halfSpan;
+          const dryness = clamp01(0.5 + 0.5 * along);
+          const moisture = clamp01(fbm(fx + 5.2, fy - 3.7, seed + 71) * 0.7 + (1 - dryness) * 0.4);
+
+          // Towns: a nearest-town falloff gives a settlement/bandit *zone*, not a point.
+          let nearest = Infinity;
+          for (const town of features.towns) {
+            nearest = Math.min(nearest, Math.hypot(point.x - town.x, point.y - town.y));
+          }
+          const halo = Math.exp(-((nearest / TOWN_KM) ** 2));
+          const settleNoise = fbm(fx * 1.3 + 9, fy * 1.3 - 2, seed + 131, 3);
+          const settlement = clamp01(halo * 0.85 + settleNoise * 0.15);
+
+          const biome = classifyBiome(elevation, moisture, settlement);
+
+          // Cold up high, hot on the dry lowland side.
+          const temperature = 33 - elevation * 34 + (dryness - 0.5) * 7;
+          // Water is scarce on the dry side and on the peaks → high "lack of water" risk.
+          const waterProximity = clamp01(moisture * 0.85 + (1 - elevation) * 0.1 - dryness * 0.2);
+          let vegetation = clamp01(moisture * (1 - 0.55 * elevation));
+          if (biome === 'savannah') vegetation = clamp01(vegetation * 0.6 + 0.18);
+          else if (biome === 'mountains') vegetation *= 0.4;
+          else if (biome === 'town') vegetation *= 0.35;
+          else if (biome === 'water') vegetation *= 0.2;
+
           return {
             biome,
-            elevation: elevationN * 2500,
+            elevation: elevation * PEAK_M,
             temperature,
-            vegetation: clamp01(moistureN * (biome === 'savannah' ? 0.5 : 1)),
-            waterProximity: clamp01(moistureN),
-            banditActivity: biome === 'town' ? clamp01(0.6 + townN * 0.4) : clamp01(townN * 0.5),
+            vegetation,
+            waterProximity,
+            banditActivity: clamp01(halo * 0.9 + settleNoise * 0.1),
           };
         },
       };

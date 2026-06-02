@@ -2,9 +2,11 @@ import { MapContainer } from 'react-leaflet';
 import { CRS } from 'leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
 import { useBlockbusterStore } from '@/state/store';
+import { TerrainLayer } from './TerrainLayer';
 import { HexGridLayer } from './HexGridLayer';
 import { RouteLayer } from './RouteLayer';
 import { MapToolbar } from './MapToolbar';
+import { BiomeLegend } from './BiomeLegend';
 
 /**
  * The map pane. Uses `CRS.Simple` because the world is a fictitious flat
@@ -29,9 +31,11 @@ export function MapView() {
         zoomSnap={0.25}
         attributionControl={false}
       >
+        <TerrainLayer />
         <HexGridLayer />
         <RouteLayer />
       </MapContainer>
+      <BiomeLegend />
     </div>
   );
 }

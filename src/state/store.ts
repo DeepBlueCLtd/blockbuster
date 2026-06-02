@@ -43,6 +43,7 @@ export function createBlockbusterStore(engine: Engine) {
       hexSize: DEFAULT_HEX_SIZE_KM,
 
       grid: null,
+      field: null,
       terrain: new Map(),
       riskStates: new Map(),
 
@@ -58,6 +59,9 @@ export function createBlockbusterStore(engine: Engine) {
       hoveredCellId: null,
       activeTab: 'risk',
       displayRisk: 'composite',
+      // Start on the underlying terrain map; the hex grid is a switchable overlay.
+      showTerrain: true,
+      showHexGrid: false,
 
       regenerate: (seed) => {
         const s = get();
@@ -84,6 +88,7 @@ export function createBlockbusterStore(engine: Engine) {
         set({
           seed: useSeed,
           grid,
+          field,
           terrain,
           riskStates,
           waypoints,
@@ -185,6 +190,8 @@ export function createBlockbusterStore(engine: Engine) {
       hoverCell: (cellId) => set({ hoveredCellId: cellId }),
       setActiveTab: (tab) => set({ activeTab: tab }),
       setDisplayRisk: (risk) => set({ displayRisk: risk }),
+      setShowTerrain: (show) => set({ showTerrain: show }),
+      setShowHexGrid: (show) => set({ showHexGrid: show }),
     };
   });
 }

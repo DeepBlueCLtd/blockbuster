@@ -9,6 +9,7 @@ import { worldRingToLatLng } from './projection';
 /** Renders the hex grid as Leaflet polygons, shaded by the active risk view. */
 export function HexGridLayer() {
   const grid = useBlockbusterStore((s) => s.grid);
+  const showHexGrid = useBlockbusterStore((s) => s.showHexGrid);
   const riskStates = useBlockbusterStore((s) => s.riskStates);
   const displayRisk = useBlockbusterStore((s) => s.displayRisk);
   const costParams = useBlockbusterStore((s) => s.costParams);
@@ -26,7 +27,7 @@ export function HexGridLayer() {
     return max;
   }, [riskStates, costParams]);
 
-  if (!grid) return null;
+  if (!grid || !showHexGrid) return null;
   const waypointSet = new Set(waypoints);
 
   return (
