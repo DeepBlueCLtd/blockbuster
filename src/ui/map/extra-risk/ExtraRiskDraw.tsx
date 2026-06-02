@@ -7,9 +7,11 @@ import {
   TerraDrawPolygonMode,
   TerraDrawRectangleMode,
 } from 'terra-draw';
+import type { HexColor } from 'terra-draw';
 import { TerraDrawLeafletAdapter } from 'terra-draw-leaflet-adapter';
 import type { ZoneKind } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
+import { RISK_COLORS } from '@/ui/theme';
 import { featureKind, featureToWorldRing, normalizeCircleRing } from './coords';
 
 let zoneSeq = 0;
@@ -25,19 +27,32 @@ let zoneSeq = 0;
 export function ExtraRiskDraw() {
   const map = useMap();
   const drawMode = useBlockbusterStore((s) => s.drawMode);
+  const zoneRiskType = useBlockbusterStore((s) => s.zoneRiskType);
   const addZone = useBlockbusterStore((s) => s.addZone);
   const drawRef = useRef<TerraDraw | null>(null);
+  // Keep the latest selected risk reachable by Terra Draw's (once-created) style fns.
+  const riskRef = useRef(zoneRiskType);
+  riskRef.current = zoneRiskType;
 
   // Build the Terra Draw instance once for this map.
   useEffect(() => {
+    // Style the in-progress shape in the selected risk's colour (read live, so it
+    // tracks the dropdown without rebuilding the modes).
+    const drawColor = (): HexColor => RISK_COLORS[riskRef.current] as HexColor;
+    const styles = {
+      fillColor: drawColor,
+      fillOpacity: 0.2,
+      outlineColor: drawColor,
+      outlineWidth: 2,
+    };
     const draw = new TerraDraw({
       adapter: new TerraDrawLeafletAdapter({ map, lib: L }),
       modes: [
-        new TerraDrawRectangleMode(),
+        new TerraDrawRectangleMode({ styles }),
         // CRS.Simple is not web-mercator; we pick the planar projection (never
         // 'globe'/haversine, which blows up here) and re-round circles on finish.
-        new TerraDrawCircleMode({ projection: 'web-mercator', segments: 64 }),
-        new TerraDrawPolygonMode(),
+        new TerraDrawCircleMode({ projection: 'web-mercator', segments: 64, styles }),
+        new TerraDrawPolygonMode({ styles }),
       ],
     });
 
