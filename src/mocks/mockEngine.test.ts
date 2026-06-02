@@ -21,9 +21,14 @@ function cellNear(target: WorldPoint): CellId {
 describe('mock route planner', () => {
   const plan = planRoutesSync(fixtureRequest);
 
-  it('returns between one and coaCount COAs', () => {
-    expect(plan.coas.length).toBeGreaterThanOrEqual(1);
-    expect(plan.coas.length).toBeLessThanOrEqual(fixtureRequest.coaCount);
+  it('returns coaCount distinct COAs, best-scoring first', () => {
+    // The grid easily permits several routes, so the planner must not collapse to
+    // a single COA — it should surface the full set of best-scoring alternatives.
+    expect(plan.coas.length).toBe(fixtureRequest.coaCount);
+    const signatures = plan.coas.map((c) => c.path.join('>'));
+    expect(new Set(signatures).size).toBe(plan.coas.length); // pairwise distinct
+    const costs = plan.coas.map((c) => c.totalCost);
+    expect([...costs].sort((a, b) => a - b)).toEqual(costs); // sorted best-first
   });
 
   it('routes start and end at the requested waypoints', () => {
