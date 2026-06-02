@@ -69,18 +69,21 @@ function AppetiteSliders() {
   const setAppetite = useBlockbusterStore((s) => s.setAppetite);
 
   return (
-    <div className="appetite-sliders" role="group" aria-label="Risk appetite">
-      {RISK_TYPES.map((risk) => (
-        <Slider
-          key={risk}
-          orientation="vertical"
-          label={RISK_LABELS[risk]}
-          color={RISK_COLORS[risk]}
-          value={appetite[risk]}
-          onChange={(value) => setAppetite(risk, value)}
-          hint={appetite[risk] < 0.34 ? 'Avoid' : appetite[risk] > 0.66 ? 'Tolerant' : 'Balanced'}
-        />
-      ))}
-    </div>
+    <section className="appetite">
+      <h2 className="appetite-title">Risk appetite</h2>
+      <div className="appetite-sliders" role="group" aria-label="Risk appetite">
+        {RISK_TYPES.map((risk) => (
+          <Slider
+            key={risk}
+            orientation="vertical"
+            label={RISK_LABELS[risk]}
+            color={RISK_COLORS[risk]}
+            value={appetite[risk]}
+            onChange={(value) => setAppetite(risk, value)}
+            hint={appetite[risk] < 0.34 ? 'Avoid' : appetite[risk] > 0.66 ? 'Tolerant' : 'Balanced'}
+          />
+        ))}
+      </div>
+    </section>
   );
 }

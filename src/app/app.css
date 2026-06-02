@@ -222,13 +222,21 @@ button:hover {
   color: var(--muted);
 }
 
-/* --- Appetite sliders (a row of vertical sliders atop the COAs tab) --- */
-.appetite-sliders {
-  display: flex;
-  gap: 6px;
+/* --- Appetite sliders (a titled row of vertical sliders atop the COAs tab) --- */
+.appetite {
   margin-bottom: 14px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
+}
+
+.appetite-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.appetite-sliders {
+  display: flex;
+  gap: 6px;
 }
 
 .slider-vertical {
