@@ -1,0 +1,60 @@
+name: PR Preview
+
+# Builds the site for every pull request and publishes it to a per-PR
+# subfolder of the gh-pages branch (pr-preview/pr-<number>/). The
+# rossjrw/pr-preview-action posts and keeps up to date a comment on the PR
+# linking to the preview, and removes the preview when the PR is closed.
+#
+# GitHub Pages must be configured to "Deploy from a branch" using the
+# gh-pages branch (root), which is already the case for this repo.
+
+on:
+  pull_request:
+    # opened / reopened / synchronize -> (re)deploy the preview on every push.
+    # closed                          -> tear the preview down.
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+# Only one preview deployment per branch at a time; newer pushes supersede
+# in-flight ones rather than racing over the gh-pages branch.
+concurrency:
+  group: pr-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # push the built preview to gh-pages
+      pull-requests: write  # post / update the preview comment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- Build the site --------------------------------------------------
+      # Skipped when the PR is closed (nothing to build, just clean up).
+      #
+      # NOTE: this assumes a Vite-style project whose `npm run build` emits a
+      # `dist/` directory. If your build command or output directory differs,
+      # adjust the `run` lines below and the `source-dir` input further down.
+      - name: Set up Node.js
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install and build
+        if: github.event.action != 'closed'
+        run: |
+          npm ci
+          npm run build
+
+      # --- Deploy / clean up the preview -----------------------------------
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./dist/
