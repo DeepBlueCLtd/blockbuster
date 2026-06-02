@@ -12,6 +12,7 @@ import {
 } from '@domain';
 import { createMockEngine } from '@/mocks/mockEngine';
 import { createGridBuilder } from '@/engine/hexgrid';
+import { createRiskEngine } from '@/engine/risk';
 import type { BlockbusterState } from './types';
 
 /** Pick two opposite-corner cells to seed routing with something to show. */
@@ -228,11 +229,12 @@ export function createBlockbusterStore(engine: Engine) {
  * The app-wide store. Real engine modules are adopted one at a time by composing
  * a hybrid {@link Engine} over the mock (see docs/spec/11 "Hybrid engine"); the
  * remaining mock modules drop out as their real counterparts land. Currently
- * live: the hex grid builder.
+ * live: the hex grid builder and the risk model.
  */
 export const useBlockbusterStore = createBlockbusterStore({
   ...createMockEngine(),
   gridBuilder: createGridBuilder(),
+  riskEngine: createRiskEngine(),
 });
 
 // --- Selectors (pure, reusable derivations) -------------------------------
