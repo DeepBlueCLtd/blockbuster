@@ -31,9 +31,12 @@ Three parts, all present in the mock — port and improve:
 
 1. **Pathfinding** between consecutive waypoints: Dijkstra/A\* over the hex graph
    with edge cost = movement + entered-cell risk cost.
-2. **Waypoint ordering (the TSP part):** for >2 waypoints, order them to minimise
-   total cost. Mock uses greedy nearest-neighbour; upgrade to nearest-neighbour +
-   2-opt for v1 quality. v1 plans an **open** path (no return to start).
+2. **Waypoint order — fixed by the analyst:** the route visits `waypoints` in the
+   exact order given. The map/panel UI lets the analyst add, reorder and relocate
+   waypoints, so the planner **must not** shuffle them (no TSP reordering). v1 plans
+   an **open** path (no return to start). _(The greedy nearest-neighbour reorder the
+   mock once used has been removed; if a future mode wants auto-ordering, gate it
+   behind an explicit request flag rather than reordering by default.)_
 3. **Diversity — 3 distinct COAs:** generate genuinely different options, e.g.
    bias the search three ways (**Direct** = favour distance, **Balanced**,
    **Cautious** = favour low risk) and/or penalise overlap with already-found
@@ -57,7 +60,7 @@ runs the core inline for unit tests.
 - Returns exactly `coaCount` COAs when the grid permits (fewer only if truly
   fewer distinct paths exist).
 - Every COA starts at the first waypoint, ends at the last, and visits all
-  waypoints in between.
+  waypoints in between **in the order given** (no reordering).
 - COAs are pairwise distinct paths.
 - `steps` align 1:1 with `path`; Σ `stepCost` == `totalCost`; per-risk matches
   `@domain/cost`.

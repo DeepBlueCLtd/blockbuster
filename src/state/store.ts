@@ -135,12 +135,37 @@ export function createBlockbusterStore(engine: Engine) {
       toggleWaypoint: (cellId) => {
         const s = get();
         const exists = s.waypoints.includes(cellId);
+        // Adding appends to the end of the sequence; the analyst reorders from there.
         const waypoints = exists
           ? s.waypoints.filter((id) => id !== cellId)
           : [...s.waypoints, cellId];
         set({ waypoints });
         if (waypoints.length >= 2) void get().replan();
         else set({ plan: null });
+      },
+
+      reorderWaypoint: (from, to) => {
+        const s = get();
+        const last = s.waypoints.length - 1;
+        if (from === to || from < 0 || from > last || to < 0 || to > last) return;
+        const waypoints = s.waypoints.slice();
+        const [moved] = waypoints.splice(from, 1);
+        if (moved === undefined) return;
+        waypoints.splice(to, 0, moved);
+        set({ waypoints });
+        if (waypoints.length >= 2) void get().replan();
+      },
+
+      relocateWaypoint: (index, cellId) => {
+        const s = get();
+        if (index < 0 || index >= s.waypoints.length) return;
+        // Ignore no-ops, unknown cells, and drops onto a cell that's already a waypoint.
+        if (s.waypoints[index] === cellId) return;
+        if (!s.grid?.get(cellId) || s.waypoints.includes(cellId)) return;
+        const waypoints = s.waypoints.slice();
+        waypoints[index] = cellId;
+        set({ waypoints });
+        if (waypoints.length >= 2) void get().replan();
       },
 
       clearWaypoints: () => {
