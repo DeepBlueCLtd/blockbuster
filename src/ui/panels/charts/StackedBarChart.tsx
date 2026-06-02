@@ -1,12 +1,12 @@
 import type { ReactElement } from 'react';
 import type { CellId, Coa } from '@domain';
 import { RISK_TYPES } from '@domain';
-import { MOVEMENT_COLOR, RISK_COLORS } from '@/ui/theme';
+import { RISK_COLORS } from '@/ui/theme';
 
 interface Props {
   coa: Coa;
-  /** Shared across all three charts so bar heights are comparable. */
-  maxStepCost: number;
+  /** Largest per-cell risk total across all three charts, so bars are comparable. */
+  maxRiskCost: number;
   selectedCellId: CellId | null;
   onHoverCell: (cellId: CellId | null) => void;
   onSelectCell: (cellId: CellId) => void;
@@ -18,10 +18,12 @@ const BAR_GAP = 6;
 
 /**
  * One COA as a row of stacked bars — each bar is one hex cell on the route,
- * segmented by the per-risk cost contribution plus a neutral movement segment.
+ * segmented by its per-risk cost contribution. Movement cost drives routing but
+ * is deliberately not drawn (it's constant per hex step, so it carries no
+ * per-cell signal and would read as a stray non-risk colour).
  */
-export function StackedBarChart({ coa, maxStepCost, selectedCellId, onHoverCell, onSelectCell }: Props) {
-  const max = maxStepCost > 0 ? maxStepCost : 1;
+export function StackedBarChart({ coa, maxRiskCost, selectedCellId, onHoverCell, onSelectCell }: Props) {
+  const max = maxRiskCost > 0 ? maxRiskCost : 1;
   const width = Math.max(coa.steps.length * (BAR_WIDTH + BAR_GAP), 1);
 
   return (
@@ -43,13 +45,6 @@ export function StackedBarChart({ coa, maxStepCost, selectedCellId, onHoverCell,
           y -= height;
           segments.push(
             <rect key={risk} x={x} y={y} width={BAR_WIDTH} height={height} fill={RISK_COLORS[risk]} />,
-          );
-        }
-        const moveHeight = (step.movementCost / max) * CHART_HEIGHT;
-        if (moveHeight > 0) {
-          y -= moveHeight;
-          segments.push(
-            <rect key="move" x={x} y={y} width={BAR_WIDTH} height={moveHeight} fill={MOVEMENT_COLOR} />,
           );
         }
 

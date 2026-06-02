@@ -22,7 +22,7 @@ import {
   toHexGridDto,
   zoneOffsetsForCell,
 } from '@domain';
-import { createMockEngine } from '@/mocks/mockEngine';
+import { createEngine } from '@/engine';
 import type { BlockbusterState } from './types';
 
 /** Per-cell, area-weighted zone offsets. Recomputed when zones or the grid change. */
@@ -93,6 +93,7 @@ export function createBlockbusterStore(engine: Engine) {
       // Start on the underlying terrain map; the hex grid is a switchable overlay.
       showTerrain: true,
       showHexGrid: false,
+      showRiskPies: false,
 
       regenerate: (seed) => {
         const s = get();
@@ -261,6 +262,7 @@ export function createBlockbusterStore(engine: Engine) {
       setDisplayRisk: (risk) => set({ displayRisk: risk }),
       setShowTerrain: (show) => set({ showTerrain: show }),
       setShowHexGrid: (show) => set({ showHexGrid: show }),
+      setShowRiskPies: (show) => set({ showRiskPies: show }),
 
       addZone: (zone) => {
         const s = get();
@@ -306,8 +308,14 @@ export function createBlockbusterStore(engine: Engine) {
   });
 }
 
-/** The app-wide store, wired to the mock engine until real modules land. */
-export const useBlockbusterStore = createBlockbusterStore(createMockEngine());
+/**
+ * The app-wide store, wired to the real engine. All four modules (map
+ * generation, hex grid, risk model, routing) now ship under `src/engine/*`; the
+ * mock remains only as the living reference and test fixture. Routing runs in a
+ * Web Worker (the default of `createRoutePlanner`), so the search never blocks
+ * the UI.
+ */
+export const useBlockbusterStore = createBlockbusterStore(createEngine());
 
 // --- Selectors (pure, reusable derivations) -------------------------------
 

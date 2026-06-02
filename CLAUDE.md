@@ -81,8 +81,13 @@ these invariants; breaking them defeats the point.
 
 4. **The cost function is shared kernel** (`src/domain/cost.ts`). The routing
    worker and the COA stacked-bar charts both call `riskCostBreakdown` /
-   `cellRiskCost`, so a chart bar equals the cost the planner optimised. **Never
-   duplicate the cost formula** — there must be no private copy.
+   `cellRiskCost`, so every chart segment is exactly a per-risk cost the planner
+   optimised. **Never duplicate the cost formula** — there must be no private
+   copy. The optimised total also includes a per-step **movement cost**
+   (`movementCost`) — a constant per hex step that keeps the three COAs distinct
+   by trading distance against risk — but the charts **deliberately omit it**:
+   being constant per cell it adds no per-cell signal and would read as a stray
+   non-risk colour, so the bars show the risk breakdown only.
 
 5. **Routing runs in a Web Worker** (`src/engine/routing/worker.ts`), so its
    request/response must be **plain structured-clone-friendly data** — no

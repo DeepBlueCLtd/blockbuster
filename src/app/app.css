@@ -108,6 +108,12 @@ body,
   border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
+/* Anchor a second legend (the risk-pie key) opposite the biome legend. */
+.map-legend--right {
+  left: auto;
+  right: 10px;
+}
+
 /* --- Side pane --- */
 .side-pane {
   display: flex;
@@ -295,16 +301,22 @@ button:hover {
 }
 
 .coa {
-  border: 1px solid var(--line);
+  /* The rounded box is colour-coded to match this COA's line on the map. */
+  border: 2px solid var(--coa-color, var(--line));
   border-radius: 8px;
   padding: 8px 10px;
   margin-bottom: 12px;
   cursor: pointer;
+  transition: box-shadow 0.12s ease;
 }
 
 .coa-selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  /* The active COA reads as a thicker line: an extra ring outside the border,
+     drawn as a shadow so selecting one never reflows the list. The soft drop
+     shadow lifts it off whatever sits behind. */
+  box-shadow:
+    0 0 0 2px var(--coa-color, var(--accent)),
+    0 1px 6px rgba(0, 0, 0, 0.18);
 }
 
 .coa-head {

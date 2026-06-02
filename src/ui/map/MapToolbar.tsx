@@ -8,6 +8,8 @@ export function MapToolbar() {
   const setShowTerrain = useBlockbusterStore((s) => s.setShowTerrain);
   const showHexGrid = useBlockbusterStore((s) => s.showHexGrid);
   const setShowHexGrid = useBlockbusterStore((s) => s.setShowHexGrid);
+  const showRiskPies = useBlockbusterStore((s) => s.showRiskPies);
+  const setShowRiskPies = useBlockbusterStore((s) => s.setShowRiskPies);
   const displayRisk = useBlockbusterStore((s) => s.displayRisk);
   const setDisplayRisk = useBlockbusterStore((s) => s.setDisplayRisk);
   const hexSize = useBlockbusterStore((s) => s.hexSize);
@@ -33,6 +35,14 @@ export function MapToolbar() {
             onChange={(event) => setShowHexGrid(event.target.checked)}
           />
           Hex grid
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showRiskPies}
+            onChange={(event) => setShowRiskPies(event.target.checked)}
+          />
+          Risk pies
         </label>
       </div>
       <label>

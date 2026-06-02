@@ -21,17 +21,18 @@ map, all against the store/fixtures.
 - Reads `plan.coas` (≤3). Renders, **vertically stacked**, one `StackedBarChart`
   per COA with a header (label, total cost, distance, cell count). Empty/CTA
   state when there's no plan yet.
-- **Shared y-scale:** compute the max `stepCost` across *all* COAs and pass it to
-  every chart so the three are **directly comparable and y-aligned** (the brief's
-  requirement).
-- Clicking a COA → `selectCoa` (emphasises it on the map). A legend maps colours
-  to risks.
+- **Shared y-scale:** compute the max per-cell **risk total** across *all* COAs
+  and pass it to every chart so the three are **directly comparable and
+  y-aligned** (the brief's requirement).
+- Clicking a COA → `selectCoa` (emphasises it on the map). The colour-coded
+  appetite sliders above double as the chart key — there is no separate legend.
 
 ### StackedBarChart
 
 - SVG. **One bar per hex cell** along `coa.steps`, stacked bottom-up by
-  `step.perRisk` (colours from `RISK_COLORS`) plus a neutral **movement** segment
-  (`MOVEMENT_COLOR`) so bar height = `stepCost`.
+  `step.perRisk` (colours from `RISK_COLORS`) so bar height = the cell's **total
+  risk cost**. Movement cost drives routing but is deliberately **not drawn** — it
+  is constant per hex step, so it carries no per-cell signal.
 - Hover a bar → `onHoverCell(cellId)` (cross-highlights the map); click →
   `onSelectCell`. The bar matching `selectedCellId` is outlined.
 - **AC:** segment heights equal `riskCostBreakdown` for the cell; bars across the
