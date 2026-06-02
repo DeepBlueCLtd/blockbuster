@@ -194,6 +194,20 @@ button:hover {
   font-size: 13px;
 }
 
+.slider-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.slider-swatch {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
 .slider-value {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -331,13 +345,7 @@ button:hover {
   margin-top: 10px;
 }
 
-/* --- Waypoint sequence editor --- */
-.waypoints {
-  margin-bottom: 14px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
-}
-
+/* --- Waypoint sequence editor (its own tab) --- */
 .waypoints-head {
   display: flex;
   align-items: baseline;

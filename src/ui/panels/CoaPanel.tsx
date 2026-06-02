@@ -2,9 +2,8 @@ import { RISK_LABELS, RISK_TYPES } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { RISK_COLORS } from '@/ui/theme';
 import { StackedBarChart } from './charts/StackedBarChart';
-import { WaypointsPanel } from './WaypointsPanel';
 
-/** The "COAs" tab: the waypoint sequence editor plus the three per-cell cost charts. */
+/** The "COAs" tab: the three per-cell cost charts for the generated routes. */
 export function CoaPanel() {
   const plan = useBlockbusterStore((s) => s.plan);
   const planning = useBlockbusterStore((s) => s.planning);
@@ -24,9 +23,12 @@ export function CoaPanel() {
 
   return (
     <div className="panel coa-panel">
-      <WaypointsPanel />
       {!hasPlan ? (
-        <p className="panel-hint">{planning ? 'Planning routes…' : 'No routes yet.'}</p>
+        <p className="panel-hint">
+          {planning
+            ? 'Planning routes…'
+            : 'No routes yet. Add at least two waypoints on the Waypoints tab.'}
+        </p>
       ) : (
         <>
           <RiskLegend />

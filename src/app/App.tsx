@@ -3,12 +3,14 @@ import { useBlockbusterStore } from '@/state/store';
 import { Tabs } from '@/ui/components/Tabs';
 import { MapView } from '@/ui/map/MapView';
 import { RiskAppetitePanel } from '@/ui/panels/RiskAppetitePanel';
+import { WaypointsPanel } from '@/ui/panels/WaypointsPanel';
 import { CoaPanel } from '@/ui/panels/CoaPanel';
 import { CellInspector } from '@/ui/panels/CellInspector';
 import type { ActiveTab } from '@/state/types';
 
 const TABS: ReadonlyArray<{ id: ActiveTab; label: string }> = [
   { id: 'risk', label: 'Risk appetite' },
+  { id: 'waypoints', label: 'Waypoints' },
   { id: 'coas', label: 'COAs' },
 ];
 
@@ -39,7 +41,13 @@ export function App() {
         </header>
         <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
         <div className="tab-body">
-          {activeTab === 'risk' ? <RiskAppetitePanel /> : <CoaPanel />}
+          {activeTab === 'risk' ? (
+            <RiskAppetitePanel />
+          ) : activeTab === 'waypoints' ? (
+            <WaypointsPanel />
+          ) : (
+            <CoaPanel />
+          )}
         </div>
         <CellInspector />
       </aside>
