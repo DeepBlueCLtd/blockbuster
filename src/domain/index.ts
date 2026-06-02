@@ -12,6 +12,7 @@ export * from './rng';
 export * from './terrain';
 export * from './hex';
 export * from './risk';
+export * from './zone';
 export * from './cost';
 export * from './routing';
 export * from './ports';

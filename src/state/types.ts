@@ -4,10 +4,12 @@ import type {
   CostParams,
   HexGrid,
   RiskType,
+  RiskZone,
   RoutePlan,
   TerrainField,
   TerrainSample,
   WorldExtent,
+  ZoneKind,
   Km,
 } from '@domain';
 
@@ -15,7 +17,10 @@ import type {
 export type DisplayRisk = RiskType | 'composite';
 
 /** Right-hand tab selection. */
-export type ActiveTab = 'risk' | 'coas';
+export type ActiveTab = 'risk' | 'coas' | 'extra';
+
+/** The armed extra-risk drawing tool, or null when none is active. */
+export type DrawMode = ZoneKind | null;
 
 /**
  * The complete application state plus the actions that mutate it. The store is
@@ -38,6 +43,8 @@ export interface BlockbusterState {
   // --- Analyst controls ---
   costParams: CostParams;
   waypoints: CellId[];
+  /** Extra-risk zones drawn over the current basemap (cleared on regenerate). */
+  zones: RiskZone[];
 
   // --- Routing output ---
   plan: RoutePlan | null;
@@ -48,6 +55,9 @@ export interface BlockbusterState {
   selectedCellId: CellId | null;
   selectedCoaId: string | null;
   hoveredCellId: CellId | null;
+  selectedZoneId: string | null;
+  /** Currently armed extra-risk draw tool (only meaningful on the Extra-risk tab). */
+  drawMode: DrawMode;
   activeTab: ActiveTab;
   displayRisk: DisplayRisk;
   /** Whether the continuous terrain base map is drawn. */
@@ -76,4 +86,10 @@ export interface BlockbusterState {
   setDisplayRisk: (risk: DisplayRisk) => void;
   setShowTerrain: (show: boolean) => void;
   setShowHexGrid: (show: boolean) => void;
+  // --- Extra-risk zones ---
+  addZone: (zone: RiskZone) => void;
+  updateZone: (id: string, patch: Partial<Pick<RiskZone, 'name' | 'risk' | 'offset'>>) => void;
+  removeZone: (id: string) => void;
+  selectZone: (id: string | null) => void;
+  setDrawMode: (mode: DrawMode) => void;
 }

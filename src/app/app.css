@@ -464,3 +464,71 @@ button:hover {
 .leaflet-marker-icon.wp-marker.is-end {
   background: #c62828;
 }
+
+/* --- Extra-risk tab --- */
+.extra-tools {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.extra-tools .tool {
+  flex: 1;
+}
+
+.tool-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.zone-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.zone-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.zone-row.selected {
+  border-color: var(--accent);
+  background: rgba(21, 101, 192, 0.06);
+}
+
+.zone-select {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+}
+
+.zone-select:hover {
+  color: inherit;
+  border: none;
+}
+
+.zone-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.zone-meta {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: capitalize;
+}

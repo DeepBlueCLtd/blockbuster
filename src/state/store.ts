@@ -3,6 +3,7 @@ import type { CellId, CellRiskState, Engine, HexGrid, RiskProfile, RouteRequest 
 import {
   cellRiskCost,
   clamp01,
+  clampZoneOffset,
   DEFAULT_COST_PARAMS,
   DEFAULT_EXTENT,
   DEFAULT_HEX_SIZE_KM,
@@ -49,6 +50,7 @@ export function createBlockbusterStore(engine: Engine) {
 
       costParams: DEFAULT_COST_PARAMS,
       waypoints: [],
+      zones: [],
 
       plan: null,
       planning: false,
@@ -57,6 +59,8 @@ export function createBlockbusterStore(engine: Engine) {
       selectedCellId: null,
       selectedCoaId: null,
       hoveredCellId: null,
+      selectedZoneId: null,
+      drawMode: null,
       activeTab: 'risk',
       displayRisk: 'composite',
       // Start on the underlying terrain map; the hex grid is a switchable overlay.
@@ -85,6 +89,11 @@ export function createBlockbusterStore(engine: Engine) {
         let waypoints = s.waypoints.filter((id) => grid.get(id));
         if (waypoints.length < 2) waypoints = defaultWaypoints(grid);
 
+        // Zones are pinned to the basemap they were drawn on, so they are dropped
+        // when the seed changes (a new world) but kept across a same-seed rebuild
+        // such as a hex-size change (the basemap is unchanged; only the grid moved).
+        const basemapChanged = useSeed !== s.seed;
+
         set({
           seed: useSeed,
           grid,
@@ -92,6 +101,8 @@ export function createBlockbusterStore(engine: Engine) {
           terrain,
           riskStates,
           waypoints,
+          zones: basemapChanged ? [] : s.zones,
+          selectedZoneId: basemapChanged ? null : s.selectedZoneId,
           selectedCellId: null,
           selectedCoaId: null,
         });
@@ -217,6 +228,28 @@ export function createBlockbusterStore(engine: Engine) {
       setDisplayRisk: (risk) => set({ displayRisk: risk }),
       setShowTerrain: (show) => set({ showTerrain: show }),
       setShowHexGrid: (show) => set({ showHexGrid: show }),
+
+      addZone: (zone) => {
+        const s = get();
+        set({ zones: [...s.zones, zone], selectedZoneId: zone.id });
+      },
+
+      updateZone: (id, patch) => {
+        const s = get();
+        const next = patch.offset === undefined ? patch : { ...patch, offset: clampZoneOffset(patch.offset) };
+        set({ zones: s.zones.map((z) => (z.id === id ? { ...z, ...next } : z)) });
+      },
+
+      removeZone: (id) => {
+        const s = get();
+        set({
+          zones: s.zones.filter((z) => z.id !== id),
+          selectedZoneId: s.selectedZoneId === id ? null : s.selectedZoneId,
+        });
+      },
+
+      selectZone: (id) => set({ selectedZoneId: id }),
+      setDrawMode: (mode) => set({ drawMode: mode }),
     };
   });
 }
