@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { RISK_LABELS, RISK_TYPES } from '@domain';
+import { RISK_LABELS, RISK_TYPES, type RiskType } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { coaColor, RISK_COLORS } from '@/ui/theme';
 import { Slider } from '@/ui/components/Slider';
@@ -16,9 +16,12 @@ export function CoaPanel() {
   const selectCell = useBlockbusterStore((s) => s.selectCell);
 
   const hasPlan = !!plan && plan.coas.length > 0;
-  const maxStep = hasPlan
+  // Charts draw only the risk breakdown (movement cost drives routing but is
+  // deliberately not shown), so scale bars to the largest per-cell risk total.
+  const maxRisk = hasPlan
     ? plan.coas.reduce(
-        (outer, coa) => coa.steps.reduce((inner, step) => Math.max(inner, step.stepCost), outer),
+        (outer, coa) =>
+          coa.steps.reduce((inner, step) => Math.max(inner, riskTotal(step.perRisk)), outer),
         0,
       )
     : 0;
@@ -49,7 +52,7 @@ export function CoaPanel() {
             </header>
             <StackedBarChart
               coa={coa}
-              maxStepCost={maxStep}
+              maxRiskCost={maxRisk}
               selectedCellId={selectedCellId}
               onHoverCell={hoverCell}
               onSelectCell={selectCell}
@@ -59,6 +62,11 @@ export function CoaPanel() {
       )}
     </div>
   );
+}
+
+/** Total risk cost a cell contributes — the bar height the chart draws for it. */
+function riskTotal(perRisk: Record<RiskType, number>): number {
+  return RISK_TYPES.reduce((sum, risk) => sum + perRisk[risk], 0);
 }
 
 /**
