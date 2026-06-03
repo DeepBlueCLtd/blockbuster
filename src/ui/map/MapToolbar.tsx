@@ -10,6 +10,10 @@ export function MapToolbar() {
   const setShowHexGrid = useBlockbusterStore((s) => s.setShowHexGrid);
   const showRiskPies = useBlockbusterStore((s) => s.showRiskPies);
   const setShowRiskPies = useBlockbusterStore((s) => s.setShowRiskPies);
+  const showRiskBars = useBlockbusterStore((s) => s.showRiskBars);
+  const setShowRiskBars = useBlockbusterStore((s) => s.setShowRiskBars);
+  const showRiskStacks = useBlockbusterStore((s) => s.showRiskStacks);
+  const setShowRiskStacks = useBlockbusterStore((s) => s.setShowRiskStacks);
   const showRoutes = useBlockbusterStore((s) => s.showRoutes);
   const setShowRoutes = useBlockbusterStore((s) => s.setShowRoutes);
   const displayRisk = useBlockbusterStore((s) => s.displayRisk);
@@ -45,6 +49,22 @@ export function MapToolbar() {
             onChange={(event) => setShowRiskPies(event.target.checked)}
           />
           Risk pies
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showRiskBars}
+            onChange={(event) => setShowRiskBars(event.target.checked)}
+          />
+          Risk bars
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showRiskStacks}
+            onChange={(event) => setShowRiskStacks(event.target.checked)}
+          />
+          Risk stack
         </label>
         <label className="toggle">
           <input

@@ -99,3 +99,109 @@ export function cellInradius(center: WorldPoint, vertices: readonly WorldPoint[]
   }
   return Number.isFinite(min) ? min : 0;
 }
+
+// ---------------------------------------------------------------------------
+// Bar / stacked-bar chart geometry
+// ---------------------------------------------------------------------------
+
+/** Fraction of a cell's inradius the bar chart area spans. */
+export const BAR_RADIUS_FRACTION = 0.68;
+
+export interface BarRect {
+  risk: RiskType;
+  /** Four corners of the rectangle in world-space (closed polygon). */
+  ring: WorldPoint[];
+}
+
+/**
+ * Grouped bar chart: one narrow column per risk, side by side, with height
+ * proportional to the *absolute* cost value for that risk. The tallest bar
+ * fills `radius` height; the others are scaled relative to the maximum across
+ * *all five* risks so bar heights are directly comparable between channels.
+ *
+ * Returns `[]` if the cell has zero cost on every risk.
+ */
+export function riskBarRects(
+  center: WorldPoint,
+  radius: number,
+  breakdown: Record<RiskType, number>,
+): BarRect[] {
+  const entries = RISK_TYPES.map((risk) => ({ risk, value: Math.max(0, breakdown[risk]) }));
+  const maxVal = Math.max(...entries.map((e) => e.value));
+  if (maxVal <= 0) return [];
+
+  const count = RISK_TYPES.length; // 5
+  const totalWidth = radius * 1.6; // horizontal span of all bars combined
+  const gap = totalWidth * 0.06; // small gap between bars
+  const barWidth = (totalWidth - gap * (count - 1)) / count;
+  const left = center.x - totalWidth / 2;
+  const bottom = center.y - radius * 0.5;
+
+  return entries
+    .filter((e) => e.value > 0)
+    .map((e, _i) => {
+      const idx = RISK_TYPES.indexOf(e.risk);
+      const x0 = left + idx * (barWidth + gap);
+      const x1 = x0 + barWidth;
+      const height = (e.value / maxVal) * radius;
+      const y0 = bottom;
+      const y1 = bottom + height;
+      return {
+        risk: e.risk,
+        ring: [
+          { x: x0, y: y0 },
+          { x: x1, y: y0 },
+          { x: x1, y: y1 },
+          { x: x0, y: y1 },
+        ],
+      };
+    });
+}
+
+/**
+ * Stacked bar chart: a single column centred in the cell. Each risk is a
+ * segment whose height is proportional to its absolute cost value. The
+ * segments are stacked bottom to top in canonical {@link RISK_TYPES} order,
+ * and the total stack height scales to fill `radius` based on the maximum
+ * possible total (so a fully-risky cell fills the column).
+ *
+ * When `maxTotal` is provided the stack heights are normalised against it,
+ * letting different cells share a common scale. When omitted the tallest
+ * stack fills the full radius (per-cell normalisation).
+ *
+ * Returns `[]` if the cell has zero cost on every risk.
+ */
+export function riskStackRects(
+  center: WorldPoint,
+  radius: number,
+  breakdown: Record<RiskType, number>,
+  maxTotal?: number,
+): BarRect[] {
+  const entries = RISK_TYPES.map((risk) => ({ risk, value: Math.max(0, breakdown[risk]) }));
+  const cellTotal = entries.reduce((sum, e) => sum + e.value, 0);
+  if (cellTotal <= 0) return [];
+
+  const scale = maxTotal && maxTotal > 0 ? maxTotal : cellTotal;
+  const barWidth = radius * 0.5;
+  const x0 = center.x - barWidth / 2;
+  const x1 = center.x + barWidth / 2;
+  const bottom = center.y - radius * 0.5;
+
+  const rects: BarRect[] = [];
+  let y = bottom;
+  for (const e of entries) {
+    if (e.value <= 0) continue;
+    const height = (e.value / scale) * radius;
+    rects.push({
+      risk: e.risk,
+      ring: [
+        { x: x0, y: y },
+        { x: x1, y: y },
+        { x: x1, y: y + height },
+        { x: x0, y: y + height },
+      ],
+    });
+    y += height;
+  }
+  return rects;
+}

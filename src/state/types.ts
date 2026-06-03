@@ -72,6 +72,10 @@ export interface BlockbusterState {
   showHexGrid: boolean;
   /** Whether each cell's per-risk cost breakdown is drawn as a pie overlay. */
   showRiskPies: boolean;
+  /** Whether each cell's per-risk cost is drawn as a grouped bar chart overlay. */
+  showRiskBars: boolean;
+  /** Whether each cell's per-risk cost is drawn as a stacked bar overlay. */
+  showRiskStacks: boolean;
   /** Whether the generated route lines and waypoint markers are drawn. */
   showRoutes: boolean;
 
@@ -98,6 +102,8 @@ export interface BlockbusterState {
   setShowTerrain: (show: boolean) => void;
   setShowHexGrid: (show: boolean) => void;
   setShowRiskPies: (show: boolean) => void;
+  setShowRiskBars: (show: boolean) => void;
+  setShowRiskStacks: (show: boolean) => void;
   setShowRoutes: (show: boolean) => void;
   // --- Extra-risk zones ---
   addZone: (zone: RiskZone) => void;
