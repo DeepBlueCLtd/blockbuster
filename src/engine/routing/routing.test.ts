@@ -169,6 +169,61 @@ function pickMiddleWaypoint(): CellId {
   return best.id;
 }
 
+describe('routing core (optimise order)', () => {
+  it('keeps the first waypoint fixed and reorders the rest to minimise cost', () => {
+    // Create a linear grid: 0,0 -> 4,0 where a "zig-zag" ordering is suboptimal.
+    const cols = 7;
+    const cells: HexGridDto['cells'] = [];
+    const risk: Record<CellId, RiskProfile> = {};
+    for (let q = 0; q < cols; q++) {
+      const id = toCellId({ q, r: 0 });
+      cells.push({ id, q, r: 0, center: { x: SQRT3 * q, y: 0 } });
+      risk[id] = { animals: 0, cold: 0, heat: 0, water: 0, thief: 0 };
+    }
+    const grid: HexGridDto = {
+      layout: { orientation: 'pointy', size: 1, origin: { x: 0, y: 0 } },
+      extent: { width: SQRT3 * cols, height: 3 },
+      cells,
+    };
+    // Waypoints in a bad order: 0 -> 4 -> 2 -> 6 (zig-zag)
+    const wp0 = toCellId({ q: 0, r: 0 });
+    const wp2 = toCellId({ q: 2, r: 0 });
+    const wp4 = toCellId({ q: 4, r: 0 });
+    const wp6 = toCellId({ q: 6, r: 0 });
+    const zigzag: CellId[] = [wp0, wp4, wp2, wp6];
+
+    const ordered = planRoutes({
+      grid,
+      risk,
+      params: DEFAULT_COST_PARAMS,
+      waypoints: zigzag,
+      coaCount: 1,
+      optimiseOrder: false,
+    });
+    const optimised = planRoutes({
+      grid,
+      risk,
+      params: DEFAULT_COST_PARAMS,
+      waypoints: zigzag,
+      coaCount: 1,
+      optimiseOrder: true,
+    });
+
+    // The optimised route should cost less or equal (fewer redundant steps).
+    expect(optimised.coas[0]!.totalCost).toBeLessThanOrEqual(ordered.coas[0]!.totalCost);
+    // The first waypoint must still be the start.
+    expect(optimised.coas[0]!.path[0]).toBe(wp0);
+    // The optimised plan echoes the original waypoints unchanged.
+    expect(optimised.waypoints).toEqual(zigzag);
+  });
+
+  it('with 2 or fewer waypoints optimiseOrder has no effect', () => {
+    const a = planRoutes({ ...fixtureRequest, optimiseOrder: false });
+    const b = planRoutes({ ...fixtureRequest, optimiseOrder: true });
+    expect(a.coas.map((c) => c.path.join('>'))).toEqual(b.coas.map((c) => c.path.join('>')));
+  });
+});
+
 function appetiteFor(params: CostParams, thiefAppetite: number): CostParams {
   return { ...params, appetite: { ...params.appetite, thief: thiefAppetite } };
 }

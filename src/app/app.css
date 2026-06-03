@@ -578,6 +578,19 @@ button:hover {
   color: var(--ink);
 }
 
+.optimise-order-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.optimise-order-toggle input {
+  margin: 0;
+}
+
 /* --- Draggable waypoint markers on the map --- */
 /* Leaflet's divIcon tags the element `leaflet-marker-icon`; the two-class
    selector both matches it and outranks Leaflet's single-class defaults. */

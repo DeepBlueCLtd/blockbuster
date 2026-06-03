@@ -17,6 +17,14 @@ export interface RouteRequest {
   /** How many distinct COAs to return (default 3). */
   coaCount: number;
   /**
+   * When true the planner keeps the first waypoint fixed as the start but is
+   * free to reorder the remaining waypoints to minimise cost (a greedy
+   * nearest-neighbour TSP heuristic). The UI numbering and the waypoint list
+   * in the store stay unchanged — only the planning sequence is affected.
+   * Default is false (visit waypoints in the order given).
+   */
+  optimiseOrder?: boolean;
+  /**
    * Optional hard blocks: cells a route may not pass *through* (e.g. terrain the
    * model treats as untraversable). Waypoints are always reachable — if removing
    * these would strand a leg, the planner falls back to a passable route for that

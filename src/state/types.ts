@@ -45,6 +45,8 @@ export interface BlockbusterState {
   // --- Analyst controls ---
   costParams: CostParams;
   waypoints: CellId[];
+  /** When true the planner may reorder waypoints (after the first) to minimise cost. */
+  optimiseOrder: boolean;
   /** Extra-risk zones drawn over the current basemap (cleared on regenerate). */
   zones: RiskZone[];
   /** Which risk channel a newly drawn zone targets (the Extra-risk tab dropdown). */
@@ -84,6 +86,7 @@ export interface BlockbusterState {
   /** Relocate the waypoint at `index` onto a different cell, keeping its sequence position. */
   relocateWaypoint: (index: number, cellId: CellId) => void;
   clearWaypoints: () => void;
+  setOptimiseOrder: (optimise: boolean) => void;
   replan: () => Promise<void>;
   selectCell: (cellId: CellId | null) => void;
   selectCoa: (coaId: string | null) => void;

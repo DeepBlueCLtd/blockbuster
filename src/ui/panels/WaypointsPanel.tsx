@@ -17,9 +17,11 @@ export function WaypointsPanel() {
   const grid = useBlockbusterStore((s) => s.grid);
   const waypoints = useBlockbusterStore((s) => s.waypoints);
   const selectedCellId = useBlockbusterStore((s) => s.selectedCellId);
+  const optimiseOrder = useBlockbusterStore((s) => s.optimiseOrder);
   const reorderWaypoint = useBlockbusterStore((s) => s.reorderWaypoint);
   const toggleWaypoint = useBlockbusterStore((s) => s.toggleWaypoint);
   const clearWaypoints = useBlockbusterStore((s) => s.clearWaypoints);
+  const setOptimiseOrder = useBlockbusterStore((s) => s.setOptimiseOrder);
   const selectCell = useBlockbusterStore((s) => s.selectCell);
 
   const last = waypoints.length - 1;
@@ -44,6 +46,14 @@ export function WaypointsPanel() {
           <p className="panel-hint">
             Visited in this order. Reorder here, or drag a numbered marker on the map to move one.
           </p>
+          <label className="optimise-order-toggle">
+            <input
+              type="checkbox"
+              checked={optimiseOrder}
+              onChange={(e) => setOptimiseOrder(e.target.checked)}
+            />
+            Optimise order
+          </label>
           <ol className="waypoint-list">
             {waypoints.map((id, index) => {
               const known = grid?.get(id) != null;
