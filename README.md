@@ -30,6 +30,8 @@ Each hex cell will contain a small table showing the level of each risk in that 
 
 A full build spec for the initial version lives in **[`docs/spec/`](./docs/spec/README.md)**. It is written for **parallel implementation**: every module talks only through typed contracts in the shared kernel (`src/domain`, alias `@domain`), so the engine, state and UI can be built independently.
 
+An interactive guide to the algorithms and approaches used in the project is available at **[`docs/approaches.html`](./docs/approaches.html)** — open it in a browser to explore terrain generation, hex grids, risk modelling, and route optimisation with hands-on widgets.
+
 A **compiling scaffold** is in place: the app already runs end-to-end on a throwaway *mock engine* and *golden fixtures*, with the four real engine modules left as stubs for module owners to fill in.
 
 - Start here: [`docs/spec/README.md`](./docs/spec/README.md) → overview → architecture → domain model → per-module specs → [work breakdown](./docs/spec/11-work-breakdown.md).
