@@ -1,7 +1,8 @@
-name: Deploy to GitHub Pages
+name: main-publish
 
-# Builds the app on every push to main and publishes it to the root of the
-# gh-pages branch, which GitHub Pages serves as the production site.
+# Builds the app on every push to main and publishes a packaged site to the
+# root of the gh-pages branch, which GitHub Pages serves as the production
+# site.
 #
 # Per-PR previews (see pr-preview.yml) live under pr-preview/pr-<number>/ on
 # the same branch, so this deploy is configured NOT to delete that directory
@@ -39,11 +40,19 @@ jobs:
           npm ci
           npm run build
 
+      - name: Package gh-pages site
+        run: |
+          rm -rf page-dist
+          mkdir -p page-dist/demo page-dist/docs
+          cp -R dist/. page-dist/demo/
+          cp docs/approaches.html page-dist/docs/index.html
+          cp docs/gh-pages-index.html page-dist/index.html
+
       - name: Deploy to gh-pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
-          folder: dist
+          folder: page-dist
           # Replace the previous production build, but preserve the per-PR
           # preview directory maintained by pr-preview.yml.
           clean: true
