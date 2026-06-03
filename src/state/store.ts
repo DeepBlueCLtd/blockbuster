@@ -95,6 +95,8 @@ export function createBlockbusterStore(engine: Engine) {
       showTerrain: true,
       showHexGrid: false,
       showRiskPies: false,
+      showRiskBars: false,
+      showRiskStacks: false,
       showRoutes: false,
 
       regenerate: (seed) => {
@@ -271,6 +273,8 @@ export function createBlockbusterStore(engine: Engine) {
       setShowTerrain: (show) => set({ showTerrain: show }),
       setShowHexGrid: (show) => set({ showHexGrid: show }),
       setShowRiskPies: (show) => set({ showRiskPies: show }),
+      setShowRiskBars: (show) => set({ showRiskBars: show }),
+      setShowRiskStacks: (show) => set({ showRiskStacks: show }),
       setShowRoutes: (show) => set({ showRoutes: show }),
 
       addZone: (zone) => {

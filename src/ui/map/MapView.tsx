@@ -5,6 +5,8 @@ import { useBlockbusterStore } from '@/state/store';
 import { TerrainLayer } from './TerrainLayer';
 import { HexGridLayer } from './HexGridLayer';
 import { RiskPieLayer } from './RiskPieLayer';
+import { RiskBarLayer } from './RiskBarLayer';
+import { RiskStackLayer } from './RiskStackLayer';
 import { RouteLayer } from './RouteLayer';
 import { MapToolbar } from './MapToolbar';
 import { BiomeLegend } from './BiomeLegend';
@@ -43,6 +45,8 @@ export function MapView() {
         <ZoomControl position="topright" />
         <HexGridLayer />
         <RiskPieLayer />
+        <RiskBarLayer />
+        <RiskStackLayer />
         <RouteLayer />
         <ExtraRiskLayer />
         {activeTab === 'extra' && <ExtraRiskDraw />}
