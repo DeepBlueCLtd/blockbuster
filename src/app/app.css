@@ -754,3 +754,77 @@ button:hover {
   margin: 0 0 10px;
   font-size: 14px;
 }
+
+/* --- Mobile landscape: keep both map and controls usable for field review --- */
+@media (max-width: 1024px) and (orientation: landscape) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 44vw);
+  }
+
+  .side-header {
+    padding: 10px 12px;
+  }
+
+  .side-header h1 {
+    font-size: 16px;
+  }
+
+  .tagline {
+    display: none;
+  }
+
+  .tab {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  .tab-body {
+    padding: 10px 12px;
+  }
+
+  .inspector {
+    padding: 10px 12px;
+    max-height: 42%;
+  }
+
+  .map-toolbar {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    gap: 8px;
+    padding: 6px 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+  }
+
+  .map-toolbar label {
+    min-width: 0;
+  }
+
+  .map-toolbar select,
+  .map-toolbar input[type='range'] {
+    max-width: 150px;
+  }
+
+  .map-toggles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 8px;
+    row-gap: 2px;
+  }
+
+  .map-legend {
+    bottom: 8px;
+    left: 8px;
+    max-width: 46%;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  .map-legend--right {
+    left: auto;
+    right: 8px;
+  }
+}
