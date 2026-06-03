@@ -373,6 +373,13 @@ button:hover {
   display: inline-block;
 }
 
+.legend-glyph {
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 600;
+  color: #22313a;
+}
+
 .coa {
   /* The rounded box is colour-coded to match this COA's line on the map. */
   border: 2px solid var(--coa-color, var(--line));
