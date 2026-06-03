@@ -35,8 +35,9 @@ export function RouteLayer() {
   const plan = useBlockbusterStore((s) => s.plan);
   const selectedCoaId = useBlockbusterStore((s) => s.selectedCoaId);
   const waypoints = useBlockbusterStore((s) => s.waypoints);
+  const showRoutes = useBlockbusterStore((s) => s.showRoutes);
 
-  if (!grid) return null;
+  if (!grid || !showRoutes) return null;
 
   const toPoints = (ids: readonly CellId[]): LatLngExpression[] => {
     const points: LatLngExpression[] = [];
