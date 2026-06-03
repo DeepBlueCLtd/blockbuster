@@ -27,6 +27,38 @@ describe('store — extra-risk zones', () => {
     store = createBlockbusterStore(createMockEngine());
   });
 
+  describe('store — risk chart layer exclusivity', () => {
+    let store: ReturnType<typeof createBlockbusterStore>;
+    beforeEach(() => {
+      store = createBlockbusterStore(createMockEngine());
+    });
+
+    it('enables at most one risk chart layer at a time', () => {
+      store.getState().setShowRiskPies(true);
+      expect(store.getState().showRiskPies).toBe(true);
+      expect(store.getState().showRiskBars).toBe(false);
+      expect(store.getState().showRiskStacks).toBe(false);
+
+      store.getState().setShowRiskBars(true);
+      expect(store.getState().showRiskPies).toBe(false);
+      expect(store.getState().showRiskBars).toBe(true);
+      expect(store.getState().showRiskStacks).toBe(false);
+
+      store.getState().setShowRiskStacks(true);
+      expect(store.getState().showRiskPies).toBe(false);
+      expect(store.getState().showRiskBars).toBe(false);
+      expect(store.getState().showRiskStacks).toBe(true);
+    });
+
+    it('allows all risk chart layers to be off', () => {
+      store.getState().setShowRiskPies(true);
+      store.getState().setShowRiskPies(false);
+      expect(store.getState().showRiskPies).toBe(false);
+      expect(store.getState().showRiskBars).toBe(false);
+      expect(store.getState().showRiskStacks).toBe(false);
+    });
+  });
+
   it('adds a zone and selects it', () => {
     store.getState().addZone(makeZone('a'));
     expect(store.getState().zones).toHaveLength(1);
