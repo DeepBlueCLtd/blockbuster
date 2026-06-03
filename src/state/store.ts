@@ -76,6 +76,7 @@ export function createBlockbusterStore(engine: Engine) {
 
       costParams: DEFAULT_COST_PARAMS,
       waypoints: [],
+      optimiseOrder: false,
       zones: [],
       zoneRiskType: RISK_TYPES[0],
 
@@ -220,6 +221,11 @@ export function createBlockbusterStore(engine: Engine) {
         set({ waypoints: [], plan: null, selectedCoaId: null });
       },
 
+      setOptimiseOrder: (optimise) => {
+        set({ optimiseOrder: optimise });
+        if (get().waypoints.length >= 2) void get().replan();
+      },
+
       replan: async () => {
         const s = get();
         if (!s.grid || s.waypoints.length < 2) {
@@ -236,6 +242,7 @@ export function createBlockbusterStore(engine: Engine) {
           params: s.costParams,
           waypoints: s.waypoints,
           coaCount: 3,
+          optimiseOrder: s.optimiseOrder,
         };
         try {
           const plan = await engine.routePlanner.plan(request);

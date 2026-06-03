@@ -324,11 +324,63 @@ function overlap(a: ReadonlySet<CellId>, b: readonly CellId[]): number {
   return shared / (a.size + bSet.size - shared);
 }
 
+// --- Waypoint ordering (greedy nearest-neighbour TSP) ----------------------
+
+/**
+ * Cost of the shortest path between two cells under the *balanced* strategy —
+ * used only for the TSP distance matrix, not for final scoring, so we skip
+ * diversity and impassable concerns (those apply to the per-leg search later).
+ */
+function legCost(graph: Graph, a: CellId, b: CellId, params: CostParams): number {
+  const path = aStar(graph, a, b, params, NO_USAGE, NO_BLOCKS);
+  if (!path) return Infinity;
+  let cost = 0;
+  for (let i = 1; i < path.length; i++) {
+    const from = graph.centerOf(path[i - 1]!);
+    const to = graph.centerOf(path[i]!);
+    if (from && to) {
+      cost += movementCost(worldDistance(from, to), params) + cellRiskCost(graph.riskAt(path[i]!), params);
+    }
+  }
+  return cost;
+}
+
+/**
+ * Greedy nearest-neighbour reordering: start at the first waypoint (fixed),
+ * then greedily pick the cheapest unvisited waypoint at each step.
+ */
+function optimiseWaypointOrder(
+  graph: Graph,
+  waypoints: readonly CellId[],
+  params: CostParams,
+): CellId[] {
+  if (waypoints.length <= 2) return waypoints.slice();
+  const remaining = new Set(waypoints.slice(1));
+  const ordered: CellId[] = [waypoints[0]!];
+  while (remaining.size > 0) {
+    let best: CellId | undefined;
+    let bestCost = Infinity;
+    for (const candidate of remaining) {
+      const c = legCost(graph, ordered[ordered.length - 1]!, candidate, params);
+      if (c < bestCost) {
+        bestCost = c;
+        best = candidate;
+      }
+    }
+    if (best === undefined) break;
+    ordered.push(best);
+    remaining.delete(best);
+  }
+  return ordered;
+}
+
 // --- Entry point -----------------------------------------------------------
 
 export function planRoutes(request: RouteRequest): RoutePlan {
   const graph = buildGraph(request.grid, request.risk);
-  const sequence = request.waypoints;
+  const sequence = request.optimiseOrder
+    ? optimiseWaypointOrder(graph, request.waypoints, request.params)
+    : request.waypoints;
   const params = request.params;
   const coaCount = Math.max(1, request.coaCount);
   const blocked: ReadonlySet<CellId> = request.impassable?.length

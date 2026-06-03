@@ -393,6 +393,49 @@ function pathThroughSequence(
   return full;
 }
 
+/** Cost of the shortest path between two cells (for TSP distance matrix). */
+function mockLegCost(graph: Graph, a: CellId, b: CellId, params: CostParams): number {
+  const path = shortestPath(graph, a, b, params, NO_USAGE);
+  let cost = 0;
+  for (let i = 1; i < path.length; i++) {
+    const from = graph.centerOf(path[i - 1]!);
+    const to = graph.centerOf(path[i]!);
+    if (from && to) {
+      cost += movementCost(worldDistance(from, to), params) + cellRiskCost(graph.riskAt(path[i]!), params);
+    }
+  }
+  return cost;
+}
+
+/**
+ * Greedy nearest-neighbour reordering: start at the first waypoint (fixed),
+ * then greedily pick the cheapest unvisited waypoint at each step.
+ */
+function optimiseWaypointOrderMock(
+  graph: Graph,
+  waypoints: readonly CellId[],
+  params: CostParams,
+): CellId[] {
+  if (waypoints.length <= 2) return waypoints.slice();
+  const remaining = new Set(waypoints.slice(1));
+  const ordered: CellId[] = [waypoints[0]!];
+  while (remaining.size > 0) {
+    let best: CellId | undefined;
+    let bestCost = Infinity;
+    for (const candidate of remaining) {
+      const c = mockLegCost(graph, ordered[ordered.length - 1]!, candidate, params);
+      if (c < bestCost) {
+        bestCost = c;
+        best = candidate;
+      }
+    }
+    if (best === undefined) break;
+    ordered.push(best);
+    remaining.delete(best);
+  }
+  return ordered;
+}
+
 function buildCoa(id: string, label: string, path: CellId[], graph: Graph, params: CostParams): Coa {
   const steps: CoaCellStep[] = [];
   const riskTotals = zeroRisk();
@@ -426,10 +469,11 @@ function buildCoa(id: string, label: string, path: CellId[], graph: Graph, param
 /** Synchronous core of the mock planner (used by fixtures and tests). */
 export function planRoutesSync(request: RouteRequest): RoutePlan {
   const graph = buildGraph(request.grid, request.risk);
-  // Waypoints are visited in the exact order the analyst arranged them — the UI
-  // owns the sequence (add / reorder / relocate), so the planner must not shuffle
-  // them. Diversity comes from how routes path *between* consecutive waypoints.
-  const sequence = request.waypoints;
+  // When optimiseOrder is set, keep the first waypoint fixed and greedily
+  // reorder the rest via nearest-neighbour heuristic.
+  const sequence = request.optimiseOrder
+    ? optimiseWaypointOrderMock(graph, request.waypoints, request.params)
+    : request.waypoints;
   const params = request.params;
   const coaCount = Math.max(1, request.coaCount);
 
