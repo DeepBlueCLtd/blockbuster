@@ -1,4 +1,5 @@
 import type {
+  Biome,
   CellId,
   GridBuilder,
   GridLayoutSpec,
@@ -8,8 +9,9 @@ import type {
   TerrainField,
   TerrainSample,
   WorldExtent,
+  WorldPoint,
 } from '@domain';
-import { parseCellId, toCellId } from '@domain';
+import { BIOMES, parseCellId, toCellId } from '@domain';
 import { axialDistance, axialNeighbors, axialToWorld, hexCorners, worldToAxial } from './geometry';
 
 export { hexSizeForCellCount } from './geometry';
@@ -34,9 +36,73 @@ export function createGridBuilder(): GridBuilder {
     },
     sampleTerrain(grid: HexGrid, field: TerrainField): Map<CellId, TerrainSample> {
       const out = new Map<CellId, TerrainSample>();
-      for (const cell of grid.cells) out.set(cell.id, field.sample(cell.center));
+      for (const cell of grid.cells) out.set(cell.id, multiSampleTerrain(cell, field));
       return out;
     },
+  };
+}
+
+/**
+ * Generate the 7 sample points for a hex cell: the centre plus the midpoints
+ * between the centre and each of the 6 vertices. This gives even spatial
+ * coverage without over-sampling the boundary (which is shared with neighbours).
+ */
+function hexSamplePoints(cell: HexCell): WorldPoint[] {
+  const { center, vertices } = cell;
+  const points: WorldPoint[] = [center];
+  for (const v of vertices) {
+    points.push({ x: (center.x + v.x) / 2, y: (center.y + v.y) / 2 });
+  }
+  return points;
+}
+
+/**
+ * Sample the terrain at multiple points within a hex cell and combine into a
+ * single representative {@link TerrainSample}. Continuous attributes are
+ * averaged; the biome is chosen by majority vote so a cell on the edge of a
+ * town reflects its partial coverage rather than whichever biome happens to sit
+ * under the centre.
+ */
+function multiSampleTerrain(cell: HexCell, field: TerrainField): TerrainSample {
+  const points = hexSamplePoints(cell);
+  const n = points.length;
+
+  // Accumulate continuous values and count biomes.
+  let elevation = 0;
+  let temperature = 0;
+  let vegetation = 0;
+  let waterProximity = 0;
+  let banditActivity = 0;
+  const biomeCounts = new Map<Biome, number>();
+
+  for (const point of points) {
+    const s = field.sample(point);
+    elevation += s.elevation;
+    temperature += s.temperature;
+    vegetation += s.vegetation;
+    waterProximity += s.waterProximity;
+    banditActivity += s.banditActivity;
+    biomeCounts.set(s.biome, (biomeCounts.get(s.biome) ?? 0) + 1);
+  }
+
+  // Majority-vote biome: pick the most frequent; break ties by canonical order.
+  let bestBiome: Biome = BIOMES[0]!;
+  let bestCount = 0;
+  for (const biome of BIOMES) {
+    const count = biomeCounts.get(biome) ?? 0;
+    if (count > bestCount) {
+      bestCount = count;
+      bestBiome = biome;
+    }
+  }
+
+  return {
+    biome: bestBiome,
+    elevation: (elevation / n) as TerrainSample['elevation'],
+    temperature: (temperature / n) as TerrainSample['temperature'],
+    vegetation: (vegetation / n) as TerrainSample['vegetation'],
+    waterProximity: (waterProximity / n) as TerrainSample['waterProximity'],
+    banditActivity: (banditActivity / n) as TerrainSample['banditActivity'],
   };
 }
 
