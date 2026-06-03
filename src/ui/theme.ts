@@ -55,6 +55,16 @@ export const BIOME_LABELS: Record<Biome, string> = {
   water: 'Water',
 };
 
+/** Compact map glyphs used for terrain hints on the base map and legend. */
+export const BIOME_ICONS: Record<Biome, string> = {
+  woodland: '♣',
+  town: '⌂',
+  savannah: '✶',
+  mountains: '▲',
+  grassland: '❋',
+  water: '≈',
+};
+
 /** Map a normalised intensity (0…1) to a green→red heat colour. */
 export function heatColor(t: number): string {
   const hue = (1 - clamp01(t)) * 120;

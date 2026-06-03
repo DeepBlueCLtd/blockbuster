@@ -5,13 +5,15 @@ import type { ImageOverlay, LatLngBoundsExpression } from 'leaflet';
 import type { Biome, TerrainField, TerrainSample, WorldExtent } from '@domain';
 import { clamp01 } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
-import { BIOME_COLORS } from '@/ui/theme';
+import { BIOME_COLORS, BIOME_ICONS } from '@/ui/theme';
 
 /** Raster resolution of the base map and a cap so very large worlds stay cheap. */
 const PX_PER_KM = 8;
 const MAX_DIM = 480;
 /** Elevation (m) that shading treats as a peak — matches the map generator. */
 const MAX_ELEV_M = 2600;
+/** Pixel spacing between overlaid terrain hint glyphs. */
+const ICON_SPACING_PX = 30;
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -22,6 +24,17 @@ const BIOME_RGB = Object.fromEntries(
   (Object.keys(BIOME_COLORS) as Biome[]).map((biome) => [biome, hexToRgb(BIOME_COLORS[biome])]),
 ) as Record<Biome, [number, number, number]>;
 
+function hash01(seed: number, x: number, y: number): number {
+  const n = Math.sin((x + 1.31) * 12.9898 + (y + 0.73) * 78.233 + seed * 0.01991) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function iconColorForBiome(biome: Biome): string {
+  const [r, g, b] = BIOME_RGB[biome];
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance < 0.48 ? 'rgba(255, 255, 255, 0.54)' : 'rgba(20, 30, 40, 0.48)';
+}
+
 /** Biome colour with a little elevation relief so peaks read darker than valleys. */
 function terrainRgb(sample: TerrainSample): [number, number, number] {
   const [r, g, b] = BIOME_RGB[sample.biome];
@@ -31,6 +44,45 @@ function terrainRgb(sample: TerrainSample): [number, number, number] {
     Math.min(255, g * shade),
     Math.min(255, b * shade),
   ];
+}
+
+function drawTerrainIcons(
+  ctx: CanvasRenderingContext2D,
+  field: TerrainField,
+  extent: WorldExtent,
+  w: number,
+  h: number,
+) {
+  const spacing = Math.max(18, ICON_SPACING_PX);
+  const jitter = spacing * 0.42;
+  const iconSize = Math.max(11, Math.round(spacing * 0.48));
+  const worldFromPixel = (px: number, py: number) => ({
+    x: extent.width * (px / w),
+    y: extent.height * (1 - py / h),
+  });
+  const sx = Math.ceil(w / spacing);
+  const sy = Math.ceil(h / spacing);
+
+  ctx.save();
+  ctx.font = `600 ${iconSize}px system-ui, -apple-system, "Segoe UI Symbol", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let gy = 0; gy <= sy; gy++) {
+    for (let gx = 0; gx <= sx; gx++) {
+      if (hash01(field.seed + 17, gx, gy) < 0.23) continue;
+      const dx = (hash01(field.seed + 29, gx, gy) - 0.5) * jitter;
+      const dy = (hash01(field.seed + 41, gx, gy) - 0.5) * jitter;
+      const px = (gx + 0.5) * spacing + dx;
+      const py = (gy + 0.5) * spacing + dy;
+      if (px < iconSize || py < iconSize || px > w - iconSize || py > h - iconSize) continue;
+      const sample = field.sample(worldFromPixel(px, py));
+      const icon = BIOME_ICONS[sample.biome];
+      ctx.fillStyle = iconColorForBiome(sample.biome);
+      ctx.fillText(icon, px, py);
+    }
+  }
+  ctx.restore();
 }
 
 /**
@@ -63,6 +115,7 @@ function rasterizeTerrain(field: TerrainField, extent: WorldExtent): string | nu
     }
   }
   ctx.putImageData(image, 0, 0);
+  drawTerrainIcons(ctx, field, extent, w, h);
   return canvas.toDataURL();
 }
 
