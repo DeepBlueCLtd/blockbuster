@@ -53,8 +53,17 @@ jobs:
           npm ci
           npm run build
 
+      - name: Package preview site
+        if: github.event.action != 'closed'
+        run: |
+          rm -rf preview-dist
+          mkdir -p preview-dist/demo preview-dist/docs
+          cp -R dist/. preview-dist/demo/
+          cp docs/approaches.html preview-dist/docs/index.html
+          cp docs/gh-pages-index.html preview-dist/index.html
+
       # --- Deploy / clean up the preview -----------------------------------
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1
         with:
-          source-dir: ./dist/
+          source-dir: ./preview-dist/
