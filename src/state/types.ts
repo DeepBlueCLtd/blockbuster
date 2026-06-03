@@ -101,6 +101,7 @@ export interface BlockbusterState {
   updateZone: (id: string, patch: Partial<Pick<RiskZone, 'name' | 'risk' | 'offset'>>) => void;
   removeZone: (id: string) => void;
   selectZone: (id: string | null) => void;
+  toggleZoneEnabled: (id: string) => void;
   setDrawMode: (mode: DrawMode) => void;
   setZoneRiskType: (risk: RiskType) => void;
 }

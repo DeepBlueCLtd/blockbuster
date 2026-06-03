@@ -25,6 +25,7 @@ function zone(over: Partial<RiskZone> = {}): RiskZone {
       { x: 2, y: 2 },
       { x: 0, y: 2 },
     ],
+    enabled: true,
     ...over,
   };
 }
