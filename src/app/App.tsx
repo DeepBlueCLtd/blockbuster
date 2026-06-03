@@ -11,8 +11,8 @@ import type { ActiveTab } from '@/state/types';
 // Risk appetite now lives at the top of the COAs tab as a row of vertical sliders.
 const TABS: ReadonlyArray<{ id: ActiveTab; label: string }> = [
   { id: 'waypoints', label: 'Waypoints' },
+  { id: 'extra', label: 'Extra factors' },
   { id: 'coas', label: 'COAs' },
-  { id: 'extra', label: 'Extra risk' },
 ];
 
 export function App() {

@@ -32,6 +32,8 @@ export interface RiskZone {
   kind: ZoneKind;
   /** Outer ring in world km. */
   ring: WorldPoint[];
+  /** Whether this zone contributes to risk scoring. Defaults to true. */
+  enabled: boolean;
 }
 
 /** Clamp an offset into the allowed signed range. */
@@ -50,7 +52,7 @@ export function zoneOffsetsForCell(
 ): Partial<Record<RiskType, number>> {
   const out: Partial<Record<RiskType, number>> = {};
   for (const zone of zones) {
-    if (zone.offset === 0) continue;
+    if (!zone.enabled || zone.offset === 0) continue;
     const coverage = coverageFraction(hexVertices, zone.ring);
     if (coverage <= 0) continue;
     out[zone.risk] = (out[zone.risk] ?? 0) + coverage * zone.offset;

@@ -71,6 +71,7 @@ export function ExtraRiskDraw() {
           offset: 0,
           kind,
           ring,
+          enabled: true,
         });
       }
       // Geometry now lives in the store / ExtraRiskLayer; keep the tool armed.

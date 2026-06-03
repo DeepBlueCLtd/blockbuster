@@ -15,7 +15,7 @@ function fmtOffset(value: number): string {
 }
 
 /**
- * Extra-risk tab: choose the risk a new zone targets, pick a draw tool, and edit
+ * Extra-factors tab: choose the risk a new zone targets, pick a draw tool, and edit
  * the zones drawn so far (name, risk channel, offset). The offset's effect on
  * hex scores arrives with the scoring slice; for now it drives the zone styling.
  */
@@ -29,6 +29,7 @@ export function ExtraRiskPanel() {
   const selectZone = useBlockbusterStore((s) => s.selectZone);
   const updateZone = useBlockbusterStore((s) => s.updateZone);
   const removeZone = useBlockbusterStore((s) => s.removeZone);
+  const toggleZoneEnabled = useBlockbusterStore((s) => s.toggleZoneEnabled);
 
   const selectedZone = zones.find((z) => z.id === selectedZoneId) ?? null;
 
@@ -68,7 +69,7 @@ export function ExtraRiskPanel() {
       </div>
 
       {zones.length === 0 ? (
-        <p className="panel-hint">No extra-risk zones yet.</p>
+        <p className="panel-hint">No extra-factor zones yet.</p>
       ) : (
         <ul className="zone-list">
           {zones.map((zone) => (
@@ -76,8 +77,20 @@ export function ExtraRiskPanel() {
               key={zone.id}
               className={zone.id === selectedZoneId ? 'zone-row selected' : 'zone-row'}
             >
+              <label
+                className="zone-toggle"
+                title={zone.enabled ? 'Disable zone' : 'Enable zone'}
+              >
+                <input
+                  type="checkbox"
+                  checked={zone.enabled}
+                  onChange={() => toggleZoneEnabled(zone.id)}
+                />
+              </label>
               <button type="button" className="zone-select" onClick={() => selectZone(zone.id)}>
-                <span className="zone-name">{zone.name}</span>
+                <span className={zone.enabled ? 'zone-name' : 'zone-name zone-disabled'}>
+                  {zone.name}
+                </span>
                 <span className="zone-meta">
                   {zone.kind} · {RISK_LABELS[zone.risk]} · {fmtOffset(zone.offset)}
                 </span>

@@ -310,7 +310,13 @@ export function createBlockbusterStore(engine: Engine) {
         scheduleReplan();
       },
 
-      selectZone: (id) => set({ selectedZoneId: id }),
+      selectZone: (id) => set({ selectedZoneId: get().selectedZoneId === id ? null : id }),
+      toggleZoneEnabled: (id) => {
+        const s = get();
+        const zones = s.zones.map((z) => (z.id === id ? { ...z, enabled: !z.enabled } : z));
+        set({ zones, zoneContribution: computeZoneContribution(s.grid, zones) });
+        scheduleReplan();
+      },
       setDrawMode: (mode) => set({ drawMode: mode }),
       setZoneRiskType: (risk) => set({ zoneRiskType: risk }),
     };
