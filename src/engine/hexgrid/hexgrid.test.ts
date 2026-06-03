@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CellId, HexGrid, WorldPoint } from '@domain';
+import type { CellId, HexGrid, TerrainField, TerrainSample, WorldPoint } from '@domain';
 import { DEFAULT_CELL_COUNT, DEFAULT_EXTENT, DEFAULT_HEX_SIZE_KM, parseCellId } from '@domain';
 import { createGridBuilder, hexSizeForCellCount } from './index';
 
@@ -123,6 +123,81 @@ describe('hexgrid (determinism & tuning)', () => {
         expect(grid.neighbors(n)).toContain(cell.id);
         expect(grid.distance(cell.id, n)).toBe(1);
       }
+    }
+  });
+});
+
+describe('hexgrid (multi-point terrain sampling)', () => {
+  const grid = builder.build(DEFAULT_EXTENT, { orientation: 'pointy', size: DEFAULT_HEX_SIZE_KM });
+
+  it('averages continuous attributes across sample points instead of centre-only', () => {
+    // A terrain field where vegetation increases linearly with x.
+    const field: TerrainField = {
+      extent: DEFAULT_EXTENT,
+      seed: 1,
+      sample(point: WorldPoint): TerrainSample {
+        return {
+          biome: 'grassland',
+          elevation: 0,
+          temperature: 20,
+          vegetation: point.x / DEFAULT_EXTENT.width,
+          waterProximity: 0.5,
+          banditActivity: 0,
+        };
+      },
+    };
+
+    const terrain = builder.sampleTerrain(grid, field);
+    // Each cell's vegetation should be roughly equal to the average of the
+    // terrain function at its 7 sample points, not just the centre value.
+    for (const cell of grid.cells) {
+      const sample = terrain.get(cell.id)!;
+      // Compute expected average: centre + 6 midpoints to vertices.
+      const pts = [
+        cell.center,
+        ...cell.vertices.map((v) => ({
+          x: (cell.center.x + v.x) / 2,
+          y: (cell.center.y + v.y) / 2,
+        })),
+      ];
+      const expected = pts.reduce((s, p) => s + p.x / DEFAULT_EXTENT.width, 0) / pts.length;
+      expect(sample.vegetation).toBeCloseTo(expected, 8);
+    }
+  });
+
+  it('picks the majority biome rather than just the centre biome', () => {
+    // A terrain field where the left third is town and the rest is grassland.
+    const boundary = DEFAULT_EXTENT.width / 3;
+    const field: TerrainField = {
+      extent: DEFAULT_EXTENT,
+      seed: 1,
+      sample(point: WorldPoint): TerrainSample {
+        return {
+          biome: point.x < boundary ? 'town' : 'grassland',
+          elevation: 500,
+          temperature: 20,
+          vegetation: 0.5,
+          waterProximity: 0.5,
+          banditActivity: 0,
+        };
+      },
+    };
+
+    const terrain = builder.sampleTerrain(grid, field);
+    // A cell whose centre is just inside the boundary should be "town" only if
+    // the majority of its 7 sample points fall in the town zone.
+    for (const cell of grid.cells) {
+      const sample = terrain.get(cell.id)!;
+      const pts = [
+        cell.center,
+        ...cell.vertices.map((v) => ({
+          x: (cell.center.x + v.x) / 2,
+          y: (cell.center.y + v.y) / 2,
+        })),
+      ];
+      const townCount = pts.filter((p) => p.x < boundary).length;
+      const expected = townCount > pts.length / 2 ? 'town' : 'grassland';
+      expect(sample.biome).toBe(expected);
     }
   });
 });

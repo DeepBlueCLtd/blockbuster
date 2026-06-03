@@ -16,6 +16,7 @@ import type {
   Engine,
   GridBuilder,
   GridLayoutSpec,
+  HexCell,
   HexGrid,
   HexGridDto,
   MapGenConfig,
@@ -230,9 +231,69 @@ export function createMockGridBuilder(): GridBuilder {
     },
     sampleTerrain(grid: HexGrid, field: TerrainField): Map<CellId, TerrainSample> {
       const out = new Map<CellId, TerrainSample>();
-      for (const cell of grid.cells) out.set(cell.id, field.sample(cell.center));
+      for (const cell of grid.cells) out.set(cell.id, multiSampleTerrainMock(cell, field));
       return out;
     },
+  };
+}
+
+/**
+ * Sample the terrain at 7 points within a hex cell (centre + 6 midpoints to
+ * vertices) and combine: continuous attributes are averaged, biome is
+ * majority-voted. Mirrors the real engine's multi-point strategy so the mock
+ * stays a faithful reference.
+ */
+function multiSampleTerrainMock(cell: HexCell, field: TerrainField): TerrainSample {
+  const { center, vertices } = cell;
+  const points: WorldPoint[] = [center];
+  for (const v of vertices) {
+    points.push({ x: (center.x + v.x) / 2, y: (center.y + v.y) / 2 });
+  }
+  const n = points.length;
+
+  let elevation = 0;
+  let temperature = 0;
+  let vegetation = 0;
+  let waterProximity = 0;
+  let banditActivity = 0;
+  const biomeCounts = new Map<Biome, number>();
+
+  for (const point of points) {
+    const s = field.sample(point);
+    elevation += s.elevation;
+    temperature += s.temperature;
+    vegetation += s.vegetation;
+    waterProximity += s.waterProximity;
+    banditActivity += s.banditActivity;
+    biomeCounts.set(s.biome, (biomeCounts.get(s.biome) ?? 0) + 1);
+  }
+
+  // Majority-vote biome; break ties by canonical BIOMES order.
+  const biomeOrder: Biome[] = [
+    'woodland',
+    'town',
+    'savannah',
+    'mountains',
+    'grassland',
+    'water',
+  ];
+  let bestBiome: Biome = biomeOrder[0]!;
+  let bestCount = 0;
+  for (const biome of biomeOrder) {
+    const count = biomeCounts.get(biome) ?? 0;
+    if (count > bestCount) {
+      bestCount = count;
+      bestBiome = biome;
+    }
+  }
+
+  return {
+    biome: bestBiome,
+    elevation: (elevation / n) as TerrainSample['elevation'],
+    temperature: (temperature / n) as TerrainSample['temperature'],
+    vegetation: (vegetation / n) as TerrainSample['vegetation'],
+    waterProximity: (waterProximity / n) as TerrainSample['waterProximity'],
+    banditActivity: (banditActivity / n) as TerrainSample['banditActivity'],
   };
 }
 
