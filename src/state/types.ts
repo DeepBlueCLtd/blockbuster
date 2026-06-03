@@ -70,6 +70,8 @@ export interface BlockbusterState {
   showHexGrid: boolean;
   /** Whether each cell's per-risk cost breakdown is drawn as a pie overlay. */
   showRiskPies: boolean;
+  /** Whether the generated route lines and waypoint markers are drawn. */
+  showRoutes: boolean;
 
   // --- Actions ---
   /** Build (or rebuild) the world from the current seed/extent/hexSize. */
@@ -93,6 +95,7 @@ export interface BlockbusterState {
   setShowTerrain: (show: boolean) => void;
   setShowHexGrid: (show: boolean) => void;
   setShowRiskPies: (show: boolean) => void;
+  setShowRoutes: (show: boolean) => void;
   // --- Extra-risk zones ---
   addZone: (zone: RiskZone) => void;
   updateZone: (id: string, patch: Partial<Pick<RiskZone, 'name' | 'risk' | 'offset'>>) => void;
