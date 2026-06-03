@@ -35,6 +35,7 @@ export function MapView() {
         maxZoom={6}
         zoomSnap={0.25}
         zoomDelta={0.25}
+        wheelPxPerZoomLevel={240}
         attributionControl={false}
         zoomControl={false}
       >
