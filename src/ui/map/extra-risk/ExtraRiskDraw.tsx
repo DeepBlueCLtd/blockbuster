@@ -48,10 +48,17 @@ export function ExtraRiskDraw() {
     const draw = new TerraDraw({
       adapter: new TerraDrawLeafletAdapter({ map, lib: L }),
       modes: [
-        new TerraDrawRectangleMode({ styles }),
+        // 'click-move-or-drag' so a single drag draws the box (what touch users
+        // reach for) while two taps still work where dragging is awkward.
+        new TerraDrawRectangleMode({ styles, drawInteraction: 'click-move-or-drag' }),
         // CRS.Simple is not web-mercator; we pick the planar projection (never
         // 'globe'/haversine, which blows up here) and re-round circles on finish.
-        new TerraDrawCircleMode({ projection: 'web-mercator', segments: 64, styles }),
+        new TerraDrawCircleMode({
+          projection: 'web-mercator',
+          segments: 64,
+          styles,
+          drawInteraction: 'click-move-or-drag',
+        }),
         new TerraDrawPolygonMode({ styles }),
       ],
     });
@@ -85,17 +92,28 @@ export function ExtraRiskDraw() {
     };
   }, [map, addZone]);
 
-  // Arm or disarm the active tool.
+  // Arm or disarm the active tool. While a tool is armed we also disable
+  // Leaflet's own pan/zoom gestures: otherwise a drag (especially on touch,
+  // where there is no hover) is swallowed by the map's drag handler and pans
+  // the map instead of reaching Terra Draw to draw the shape. The cleanup
+  // re-enables them whenever the tool is disarmed or this layer unmounts (e.g.
+  // leaving the Extra-risk tab), so map panning is never left disabled.
   useEffect(() => {
     const draw = drawRef.current;
     if (!draw) return;
     if (drawMode) {
       if (!draw.enabled) draw.start();
       draw.setMode(drawMode);
-    } else if (draw.enabled) {
-      draw.stop();
+      map.dragging.disable();
+      map.doubleClickZoom.disable();
+      return () => {
+        map.dragging.enable();
+        map.doubleClickZoom.enable();
+      };
     }
-  }, [drawMode]);
+    if (draw.enabled) draw.stop();
+    return undefined;
+  }, [drawMode, map]);
 
   // While a tool is armed, flag the map container so its vector layers (hexes,
   // zones) and markers become click-through (see app.css). Otherwise Leaflet
