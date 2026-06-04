@@ -7,9 +7,8 @@ interface Props {
   coa: Coa;
   /** Largest per-cell risk total across all three charts, so bars are comparable. */
   maxRiskCost: number;
-  selectedCellId: CellId | null;
+  highlightedCellId: CellId | null;
   onHoverCell: (cellId: CellId | null) => void;
-  onSelectCell: (cellId: CellId) => void;
 }
 
 const CHART_HEIGHT = 120;
@@ -21,8 +20,12 @@ const BAR_GAP = 6;
  * segmented by its per-risk cost contribution. Movement cost drives routing but
  * is deliberately not drawn (it's constant per hex step, so it carries no
  * per-cell signal and would read as a stray non-risk colour).
+ *
+ * Hovering (desktop) or tapping (touch) a bar only highlights the cell on the
+ * map — it deliberately does NOT select it, so the cell editor never opens and
+ * obscures the COA charts.
  */
-export function StackedBarChart({ coa, maxRiskCost, selectedCellId, onHoverCell, onSelectCell }: Props) {
+export function StackedBarChart({ coa, maxRiskCost, highlightedCellId, onHoverCell }: Props) {
   const max = maxRiskCost > 0 ? maxRiskCost : 1;
   const width = Math.max(coa.steps.length * (BAR_WIDTH + BAR_GAP), 1);
 
@@ -48,17 +51,17 @@ export function StackedBarChart({ coa, maxRiskCost, selectedCellId, onHoverCell,
           );
         }
 
-        const isSelected = step.cellId === selectedCellId;
+        const isHighlighted = step.cellId === highlightedCellId;
         return (
           <g
             key={`${step.cellId}-${index}`}
             className="coa-bar"
             onMouseEnter={() => onHoverCell(step.cellId)}
             onMouseLeave={() => onHoverCell(null)}
-            onClick={() => onSelectCell(step.cellId)}
+            onClick={() => onHoverCell(step.cellId)}
           >
             {segments}
-            {isSelected ? (
+            {isHighlighted ? (
               <rect
                 x={x - 1}
                 y={0}
