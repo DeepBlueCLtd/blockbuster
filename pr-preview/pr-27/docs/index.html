@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blockbuster — Approaches &amp; Algorithms</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --accent: #0f3460;
+    --accent2: #16213e;
+    --card-bg: #f8f9fa;
+    --border: #dee2e6;
+    --radius: 8px;
+    --risk-animals: #e67e22;
+    --risk-cold: #3498db;
+    --risk-heat: #e74c3c;
+    --risk-water: #1abc9c;
+    --risk-thief: #9b59b6;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+    line-height: 1.7;
+    color: var(--fg);
+    background: var(--bg);
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: var(--accent2);
+    margin-bottom: 0.25rem;
+  }
+
+  h1 + p.subtitle {
+    color: #666;
+    font-size: 1.05rem;
+    margin-bottom: 2.5rem;
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    color: var(--accent);
+    margin-top: 3rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.3rem;
+  }
+
+  h2 .section-number {
+    color: #999;
+    font-weight: 400;
+    margin-right: 0.3em;
+  }
+
+  p { margin-bottom: 1rem; }
+
+  .widget {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin: 1.25rem 0 1.5rem;
+  }
+
+  .widget-title {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+    margin-bottom: 0.75rem;
+  }
+
+  canvas {
+    display: block;
+    border-radius: 4px;
+  }
+
+  label {
+    font-size: 0.9rem;
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+
+  input[type="range"] {
+    width: 100%;
+    margin: 0.25rem 0 0.5rem;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .slider-row label {
+    min-width: 100px;
+    margin: 0;
+    font-weight: 500;
+  }
+
+  .slider-row input[type="range"] {
+    flex: 1;
+    margin: 0;
+  }
+
+  .slider-row .value {
+    min-width: 3em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9rem;
+    color: #555;
+  }
+
+  .risk-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  .flex-row {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .flex-row > * { flex: 1; min-width: 200px; }
+
+  .bar-chart-container {
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+    align-items: flex-end;
+    height: 220px;
+    margin-top: 1rem;
+  }
+
+  .bar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .stacked-bar {
+    width: 60px;
+    display: flex;
+    flex-direction: column-reverse;
+    border-radius: 4px 4px 0 0;
+    overflow: hidden;
+  }
+
+  .stacked-bar .segment {
+    transition: height 0.3s ease;
+  }
+
+  .bar-label {
+    font-size: 0.8rem;
+    color: #555;
+    text-align: center;
+  }
+
+  .bar-cost {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .legend {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .note {
+    font-size: 0.85rem;
+    color: #777;
+    font-style: italic;
+    margin-top: 0.75rem;
+  }
+
+  .glossary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.75rem;
+  }
+
+  .glossary-table th,
+  .glossary-table td {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .glossary-table th {
+    font-weight: 600;
+    width: 160px;
+    color: var(--accent);
+  }
+
+  /* Flowchart styles */
+  .flowchart {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    margin: 1rem 0;
+  }
+
+  .flow-box {
+    background: white;
+    border: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    text-align: center;
+    max-width: 320px;
+  }
+
+  .flow-box.highlight {
+    background: #e8f4f8;
+    border-color: #2980b9;
+  }
+
+  .flow-arrow {
+    font-size: 1.4rem;
+    color: var(--accent);
+    line-height: 1.2;
+  }
+
+  .flow-label {
+    font-size: 0.75rem;
+    color: #888;
+  }
+
+  @media (max-width: 600px) {
+    body { padding: 1rem; }
+    .flex-row { flex-direction: column; }
+    .bar-chart-container { gap: 1rem; }
+    .stacked-bar { width: 48px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Blockbuster — Approaches &amp; Algorithms</h1>
+<p class="subtitle">A guide to the mathematical models and techniques behind Blockbuster's route-planning engine.</p>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">1.</span> What Blockbuster Does</h2>
+
+<p>
+  Blockbuster is a route-planning tool for traversing landscapes where different regions carry different kinds of danger. Given a terrain map, a set of waypoints, and an analyst's risk tolerances, it solves a variant of the <strong>shortest-path problem</strong> — except that "shortest" means <em>lowest total risk-adjusted cost</em>, not merely shortest distance.
+</p>
+<p>
+  The system produces <strong>three ranked Courses of Action (COAs)</strong>, each taking a distinct corridor through the terrain. This lets the analyst compare trade-offs quantitatively: one route might minimise heat exposure at the expense of higher bandit risk; another might be physically longer but avoids all elevated-risk cells.
+</p>
+<p>
+  The pipeline has four stages: <strong>terrain generation → hex grid overlay → risk assessment → route optimisation</strong>. Each stage is deterministic — the same inputs always yield the same outputs. Everything runs client-side in the browser; no data leaves the machine.
+</p>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">2.</span> Procedural Terrain Generation</h2>
+
+<p>
+  The landscape is generated procedurally from a single <strong>seed</strong> integer. The seed initialises a deterministic pseudo-random number generator (<em>mulberry32</em>, a fast 32-bit PRNG), guaranteeing that the same seed always produces an identical map — useful for reproducibility and scenario sharing.
+</p>
+<p>
+  The underlying technique is <strong>Perlin noise</strong>, a gradient-based noise function that produces smooth, continuous variation across a 2D plane. At each integer lattice point, a pseudo-random gradient vector is assigned (via a deterministic hash — no sine functions, avoiding floating-point artefacts). The noise value at any point <em>(x, y)</em> is computed by interpolating the dot products of these gradients with the offset vectors, using Perlin's <strong>smootherstep</strong> function:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>smootherstep(t) = 6t<sup>5</sup> − 15t<sup>4</sup> + 10t<sup>3</sup></em>
+</p>
+<p>
+  This gives C² continuity (both the value and its first derivative are smooth), producing natural-looking contours rather than blocky artefacts.
+</p>
+<p>
+  To create terrain with features at multiple scales — large mountain ranges <em>and</em> small rocky outcrops — multiple octaves of Perlin noise are summed in a technique called <strong>Fractal Brownian Motion (FBM)</strong>. Each successive octave doubles the frequency and halves the amplitude:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>FBM(x, y) = Σ<sub>i=0</sub><sup>n−1</sup> &thinsp; 0.5<sup>i</sup> · perlin(2<sup>i</sup>x, &thinsp;2<sup>i</sup>y)</em>
+</p>
+<p>
+  The result is normalised to [0, 1]. Separate FBM fields (with different seed offsets) drive elevation, vegetation density, temperature, and other terrain attributes. The biome at each point — woodland, savannah, mountains, etc. — is classified from these continuous fields.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Try it — change the seed to generate a different landscape</div>
+  <div style="margin-bottom: 0.75rem;">
+    <label for="seedInput">Seed:</label>
+    <input type="range" id="seedInput" min="1" max="200" value="42" style="width:70%;vertical-align:middle;">
+    <span id="seedValue" style="font-variant-numeric:tabular-nums;">42</span>
+  </div>
+  <canvas id="terrainCanvas" width="600" height="260"></canvas>
+  <p class="note">Each pixel is computed from multi-octave Perlin noise (FBM). The same seed always produces the identical terrain field.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">3.</span> Hex Grid Tessellation</h2>
+
+<p>
+  The terrain is discretised into a <strong>hexagonal grid</strong> using <strong>axial coordinates (q, r)</strong> — a two-axis system where the implicit third coordinate is always <em>s = −q − r</em> (the "cube constraint"). This is mathematically elegant because hex distance reduces to a simple formula:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>d(a, b) = max(|Δq|, |Δr|, |Δs|)</em> &nbsp; where &nbsp; <em>Δs = −Δq − Δr</em>
+</p>
+<p>
+  The key advantage over a square grid is <strong>isotropy</strong>: all six neighbours of a hex cell are equidistant from its centre. In a square grid, the four diagonal neighbours are √2 ≈ 1.41 times further than the four cardinal neighbours, which introduces directional bias into any pathfinding algorithm. Hexagons eliminate this.
+</p>
+<p>
+  The grid uses <strong>pointy-top orientation</strong> with a configurable circumradius (centre-to-vertex distance). The default of 2.4 km yields approximately 100 cells over the standard 50 km × 30 km map extent — as specified in the project brief.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Isotropy comparison — neighbour distances in square vs. hex grids</div>
+  <div class="flex-row">
+    <div>
+      <canvas id="squareCanvas" width="260" height="260"></canvas>
+      <p style="text-align:center;font-size:0.85rem;margin-top:0.5rem;"><strong>Square grid</strong> — diagonals are √2 ≈ 1.41× further</p>
+    </div>
+    <div>
+      <canvas id="hexCanvas" width="260" height="260"></canvas>
+      <p style="text-align:center;font-size:0.85rem;margin-top:0.5rem;"><strong>Hex grid</strong> — all neighbours equidistant</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">4.</span> Risk Assessment</h2>
+
+<p>
+  At each cell's centre, the terrain field is sampled to obtain continuous attributes — elevation, temperature, vegetation density, water proximity, and bandit activity. These are then mapped to <strong>five independent risk channels</strong>, each normalised to the range [0, 1]:
+</p>
+<ul style="margin: 0.5rem 0 1rem 1.5rem;">
+  <li><span class="risk-dot" style="background:var(--risk-animals)"></span> <strong>Animals</strong> — positively correlated with vegetation density</li>
+  <li><span class="risk-dot" style="background:var(--risk-cold)"></span> <strong>Cold</strong> — driven by elevation and low temperature</li>
+  <li><span class="risk-dot" style="background:var(--risk-heat)"></span> <strong>Heat</strong> — driven by high temperature</li>
+  <li><span class="risk-dot" style="background:var(--risk-water)"></span> <strong>Lack of water</strong> — inversely correlated with water proximity</li>
+  <li><span class="risk-dot" style="background:var(--risk-thief)"></span> <strong>Thieves</strong> — driven by bandit activity near settlements</li>
+</ul>
+<p>
+  Together these form the cell's <strong>risk profile</strong> — a five-dimensional vector. Analysts can override any channel if they possess better local intelligence; overridden values take precedence during route planning and are visually highlighted in the UI.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — terrain attributes mapped to risk channels</div>
+  <div class="flex-row" id="riskMappingWidget">
+    <div>
+      <p style="font-weight:600;margin-bottom:0.5rem;">Terrain properties</p>
+      <div class="slider-row">
+        <label>Vegetation</label>
+        <input type="range" min="0" max="100" value="70" data-terrain="vegetation">
+        <span class="value">0.70</span>
+      </div>
+      <div class="slider-row">
+        <label>Temperature</label>
+        <input type="range" min="0" max="100" value="20" data-terrain="temperature">
+        <span class="value">0.20</span>
+      </div>
+      <div class="slider-row">
+        <label>Elevation</label>
+        <input type="range" min="0" max="100" value="60" data-terrain="elevation">
+        <span class="value">0.60</span>
+      </div>
+      <div class="slider-row">
+        <label>Water nearby</label>
+        <input type="range" min="0" max="100" value="30" data-terrain="water">
+        <span class="value">0.30</span>
+      </div>
+      <div class="slider-row">
+        <label>Bandit activity</label>
+        <input type="range" min="0" max="100" value="10" data-terrain="bandit">
+        <span class="value">0.10</span>
+      </div>
+    </div>
+    <div>
+      <p style="font-weight:600;margin-bottom:0.5rem;">Resulting risk profile</p>
+      <canvas id="riskProfileCanvas" width="260" height="200"></canvas>
+    </div>
+  </div>
+  <p class="note">Drag the terrain sliders to see how landscape features drive each risk channel.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">5.</span> The Cost Function and Risk Appetite</h2>
+
+<p>
+  The cost of traversing a cell is a weighted sum across all five risk channels. The analyst controls a <strong>risk appetite</strong> per channel — a value in [0, 1] where 0 means "intolerant" and 1 means "fully tolerant." The <strong>sensitivity</strong> is simply the complement:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>sensitivity = 1 − appetite</em>
+</p>
+<p>
+  The per-channel cost contribution is then:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>cost<sub>channel</sub> = risk<sub>channel</sub> × sensitivity<sub>channel</sub> × w<sub>risk</sub></em>
+</p>
+<p>
+  where <em>w<sub>risk</sub></em> is a global risk weight (default 10). The total risk cost for the cell is the sum across all five channels. A separate <strong>movement cost</strong> — proportional to the physical distance in kilometres — is added to prevent routes from taking excessively long detours to avoid minor risks. The total step cost is therefore:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>step cost = Σ<sub>channels</sub> cost<sub>channel</sub> + distance(km) × w<sub>distance</sub></em>
+</p>
+<p>
+  Crucially, this cost function is <strong>shared</strong> between the routing engine and the UI charts — both call the same code, ensuring that what the analyst sees in the stacked bar charts is exactly what the optimiser minimised.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — adjust appetites to see their effect on per-channel and total cost</div>
+  <div class="flex-row">
+    <div id="appetiteSliders">
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-animals)"></span>Animals</label>
+        <input type="range" min="0" max="100" value="50" data-risk="animals">
+        <span class="value">0.50</span>
+      </div>
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-cold)"></span>Cold</label>
+        <input type="range" min="0" max="100" value="50" data-risk="cold">
+        <span class="value">0.50</span>
+      </div>
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-heat)"></span>Heat</label>
+        <input type="range" min="0" max="100" value="50" data-risk="heat">
+        <span class="value">0.50</span>
+      </div>
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-water)"></span>Water</label>
+        <input type="range" min="0" max="100" value="50" data-risk="water">
+        <span class="value">0.50</span>
+      </div>
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-thief)"></span>Thieves</label>
+        <input type="range" min="0" max="100" value="50" data-risk="thief">
+        <span class="value">0.50</span>
+      </div>
+    </div>
+    <div>
+      <canvas id="appetiteCanvas" width="280" height="220"></canvas>
+    </div>
+  </div>
+  <p class="note">
+    Fixed risk profile for this cell: Animals 0.6, Cold 0.3, Heat 0.8, Water 0.5, Thieves 0.2 (w<sub>risk</sub> = 10).
+    <br>Faded bars show the raw risk × w<sub>risk</sub>; solid bars show the effective cost after appetite scaling.
+  </p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">6.</span> Route Optimisation (A* Search)</h2>
+
+<p>
+  Given a set of waypoints, the system finds the lowest-cost path through the hex graph using the <strong>A* algorithm</strong>. A* is a best-first graph search that maintains a priority queue of candidate cells, ordered by <em>f(n) = g(n) + h(n)</em>, where:
+</p>
+<ul style="margin: 0.5rem 0 1rem 1.5rem;">
+  <li><em>g(n)</em> is the accumulated cost from the start to cell <em>n</em></li>
+  <li><em>h(n)</em> is a heuristic estimate of the remaining cost to the goal (hex distance × minimum possible cell cost)</li>
+</ul>
+<p>
+  Because the heuristic never overestimates, A* is guaranteed to find the optimal path. On a hex grid with ~100 cells and degree 6, this runs in well under 50 ms.
+</p>
+<p>
+  Multi-waypoint routes are computed <strong>segment by segment</strong>: A* is run independently between each consecutive pair of waypoints, and the resulting sub-paths are concatenated.
+</p>
+
+<h3 style="margin-top:1.5rem;font-size:1.1rem;">Generating three diverse COAs</h3>
+<p>
+  A single optimal path is rarely sufficient for decision-making. To produce <strong>three distinct Courses of Action</strong>, the system applies a <em>cumulative penalty</em> strategy:
+</p>
+
+<div class="widget">
+  <div class="widget-title">The cumulative-penalty loop for generating 3 COAs</div>
+  <div class="flowchart">
+    <div class="flow-box"><strong>Step 1</strong><br>Run A* to find the lowest-cost route</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box highlight"><strong>Penalise</strong><br>Add extra cost to cells used by Route 1</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box"><strong>Step 2</strong><br>Run A* again — it now avoids Route 1's cells</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box highlight"><strong>Penalise again</strong><br>Add extra cost to cells used by Routes 1 &amp; 2</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box"><strong>Step 3</strong><br>Run A* once more — forced onto a third distinct path</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box" style="border-color: #27ae60;"><strong>Result</strong><br>3 COAs ranked by total cost, each taking a different corridor</div>
+  </div>
+  <p class="note">The penalty acts as a soft constraint — previously-used cells aren't forbidden, but their inflated cost strongly discourages reuse, pushing each successive COA onto a genuinely different corridor.</p>
+</div>
+
+<p>
+  The three COAs are ranked by total cost. Each records a per-cell breakdown of risk contributions, enabling the detailed visual comparison described in the next section.
+</p>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">7.</span> Comparing Courses of Action</h2>
+
+<p>
+  The three COAs are visualised as <strong>stacked bar charts</strong>. Each bar represents one cell along the route; each coloured segment shows the contribution of one risk channel to that cell's cost. The total cost of each COA is displayed above its chart.
+</p>
+<p>
+  This decomposition is possible because the cost function is additive across channels — the analyst can immediately see which risks dominate each route and make an informed choice. For example, one COA might show tall red (heat) segments while another shows tall purple (thief) segments of similar overall height, representing a genuine trade-off.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — stacked bar charts for three COAs</div>
+  <div id="coaWidget">
+    <div class="bar-chart-container" id="coaBars"></div>
+    <div class="legend" id="coaLegend"></div>
+  </div>
+  <div style="margin-top:1rem;">
+    <label for="coaSeed">Randomise cell risks:</label>
+    <input type="range" id="coaSeed" min="1" max="100" value="1" style="width:50%;">
+    <span id="coaSeedVal">1</span>
+  </div>
+  <p class="note">Each bar is one cell on the route; colour indicates the per-channel risk cost. Slide to randomise the risk distributions and observe how the trade-offs change.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">8.</span> Responsiveness and Concurrency</h2>
+
+<p>
+  Route optimisation — three A* searches across a ~100-cell graph — can take tens of milliseconds. To prevent the UI from freezing during computation, the routing engine runs in a <strong>Web Worker</strong> (a browser-native background thread). The main thread remains responsive to slider adjustments and map interactions throughout.
+</p>
+<p>
+  User actions are <strong>debounced</strong> with a ~150 ms window: rapid successive changes (e.g., dragging a slider) are coalesced into a single route-planning request. If the analyst modifies the inputs while a plan is in progress, the system applies <strong>stale-guarding</strong> — it checks whether the returned plan's waypoints still match the current state, and discards outdated results.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Data flow — from user action to updated COA display</div>
+  <div class="flowchart">
+    <div class="flow-box">User adjusts a slider or moves a waypoint</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box highlight">Debounce — wait 150 ms for more changes</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box">Build route request with current settings</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box highlight">Send to Web Worker (background thread)</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box">Worker runs A* × 3 and returns 3 COAs</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box" style="border-color:#27ae60;">
+      <strong>Stale check</strong> — do the waypoints still match?<br>
+      ✅ Yes → display results &nbsp; ❌ No → discard &amp; re-plan
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">9.</span> Glossary</h2>
+
+<table class="glossary-table">
+  <tr><th>COA</th><td><strong>Course of Action</strong> — one of the three route options the system generates.</td></tr>
+  <tr><th>Seed</th><td>A number that controls the random landscape generation. Same seed = same landscape.</td></tr>
+  <tr><th>Hex cell</th><td>One hexagonal tile on the grid. Each cell has its own risk profile.</td></tr>
+  <tr><th>Risk profile</th><td>The five danger scores (animals, cold, heat, water, thieves) for a single cell.</td></tr>
+  <tr><th>Risk appetite</th><td>How tolerant the analyst is of each risk type, set via sliders (0 = avoid, 1 = tolerate).</td></tr>
+  <tr><th>Waypoint</th><td>A cell the analyst selects as a destination — the route must pass through all waypoints.</td></tr>
+  <tr><th>A* algorithm</th><td>A well-known shortest-path algorithm that finds the lowest-cost route through a graph.</td></tr>
+  <tr><th>Perlin noise</th><td>A method for generating smooth, natural-looking random patterns (used for terrain).</td></tr>
+  <tr><th>Web Worker</th><td>A browser feature that runs heavy calculations in a background thread, keeping the UI responsive.</td></tr>
+  <tr><th>Debounce</th><td>Waiting briefly before acting on rapid repeated changes, so only the final state is processed.</td></tr>
+</table>
+
+<!-- ═════════════════════════════════════════════════════════ -->
+<!-- SCRIPTS — all widgets are self-contained below           -->
+<!-- ═════════════════════════════════════════════════════════ -->
+<script>
+// ── Shared helpers ──────────────────────────────────────────
+const RISK_COLORS = {
+  animals: '#e67e22',
+  cold:    '#3498db',
+  heat:    '#e74c3c',
+  water:   '#1abc9c',
+  thief:   '#9b59b6',
+};
+const RISK_NAMES = ['animals', 'cold', 'heat', 'water', 'thief'];
+const RISK_LABELS = { animals: 'Animals', cold: 'Cold', heat: 'Heat', water: 'Water', thief: 'Thieves' };
+
+// Simple seeded PRNG (mulberry32) — same one the app uses
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ── Widget 1: Terrain generation (Perlin noise) ─────────────
+(function() {
+  const canvas = document.getElementById('terrainCanvas');
+  const ctx = canvas.getContext('2d');
+  const seedSlider = document.getElementById('seedInput');
+  const seedLabel = document.getElementById('seedValue');
+
+  function hashLattice(ix, iy, seed) {
+    let h = seed | 0;
+    h = Math.imul(h ^ (ix | 0), 0x85ebca6b);
+    h = Math.imul(h ^ (iy | 0), 0xc2b2ae35);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0x27d4eb2f);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+
+  function smootherstep(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+
+  function dotGrad(ix, iy, x, y, seed) {
+    const angle = hashLattice(ix, iy, seed) * Math.PI * 2;
+    return Math.cos(angle) * (x - ix) + Math.sin(angle) * (y - iy);
+  }
+
+  function perlin(x, y, seed) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const u = smootherstep(fx), v = smootherstep(fy);
+    const n00 = dotGrad(ix, iy, x, y, seed);
+    const n10 = dotGrad(ix+1, iy, x, y, seed);
+    const n01 = dotGrad(ix, iy+1, x, y, seed);
+    const n11 = dotGrad(ix+1, iy+1, x, y, seed);
+    const nx0 = n00 + (n10 - n00) * u;
+    const nx1 = n01 + (n11 - n01) * u;
+    const n = nx0 + (nx1 - nx0) * v;
+    return Math.max(0, Math.min(1, n * 0.7071 + 0.5));
+  }
+
+  function fbm(x, y, seed, octaves) {
+    let amp = 0.5, freq = 1, sum = 0, norm = 0;
+    for (let o = 0; o < octaves; o++) {
+      sum += amp * perlin(x * freq, y * freq, seed + o * 1013);
+      norm += amp;
+      amp *= 0.5;
+      freq *= 2;
+    }
+    return sum / norm;
+  }
+
+  const biomeColors = [
+    [30, 100, 180],  // water (low elevation)
+    [34, 139, 34],   // woodland
+    [124, 180, 66],  // grassland
+    [194, 178, 128], // savannah
+    [139, 119, 101], // mountains (high)
+    [220, 220, 230], // snow cap
+  ];
+
+  function terrainColor(elev, veg) {
+    if (elev < 0.15) return biomeColors[0];
+    if (elev > 0.85) return biomeColors[5];
+    if (elev > 0.7) return biomeColors[4];
+    if (veg > 0.6) return biomeColors[1];
+    if (veg > 0.35) return biomeColors[2];
+    return biomeColors[3];
+  }
+
+  function renderTerrain() {
+    const seed = parseInt(seedSlider.value);
+    seedLabel.textContent = seed;
+    const w = canvas.width, h = canvas.height;
+    const img = ctx.createImageData(w, h);
+    const scale = 8;
+    for (let py = 0; py < h; py++) {
+      for (let px = 0; px < w; px++) {
+        const x = px / w * scale, y = py / h * scale;
+        const elev = fbm(x, y, seed, 4);
+        const veg = fbm(x + 50, y + 50, seed + 999, 3);
+        const [r, g, b] = terrainColor(elev, veg);
+        const i = (py * w + px) * 4;
+        img.data[i] = r; img.data[i+1] = g; img.data[i+2] = b; img.data[i+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  seedSlider.addEventListener('input', renderTerrain);
+  renderTerrain();
+})();
+
+// ── Widget 2: Hex vs Square ────────────────────────────────
+(function() {
+  function drawSquareGrid(canvasId) {
+    const c = document.getElementById(canvasId);
+    const ctx = c.getContext('2d');
+    const size = 50, ox = 30, oy = 30;
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    // Draw 3×3 grid
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    for (let r = 0; r < 4; r++) for (let q = 0; q < 4; q++) {
+      ctx.strokeRect(ox + q * size, oy + r * size, size, size);
+    }
+
+    // Highlight centre cell
+    ctx.fillStyle = 'rgba(15, 52, 96, 0.15)';
+    ctx.fillRect(ox + size, oy + size, size, size);
+
+    // Centre dot
+    const cx = ox + 1.5 * size, cy = oy + 1.5 * size;
+    ctx.fillStyle = var_accent();
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+
+    // Draw lines to neighbours with distance labels
+    const neighbors = [
+      [0, -1, '1.0'], [1, -1, '1.41'], [1, 0, '1.0'], [1, 1, '1.41'],
+      [0, 1, '1.0'], [-1, 1, '1.41'], [-1, 0, '1.0'], [-1, -1, '1.41']
+    ];
+
+    neighbors.forEach(([dq, dr, dist]) => {
+      const nx = cx + dq * size, ny = cy + dr * size;
+      ctx.strokeStyle = dist === '1.41' ? '#e74c3c' : '#27ae60';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(nx, ny); ctx.stroke();
+
+      // Distance label
+      const lx = cx + dq * size * 0.55, ly = cy + dr * size * 0.55;
+      ctx.fillStyle = dist === '1.41' ? '#c0392b' : '#1e8449';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(dist, lx + (dq === 0 ? 14 : 0), ly + (dr === 0 ? -8 : 0));
+    });
+
+    ctx.fillStyle = '#333';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🟢 = 1.0   🔴 = 1.41', c.width / 2, c.height - 10);
+  }
+
+  function drawHexGrid(canvasId) {
+    const c = document.getElementById(canvasId);
+    const ctx = c.getContext('2d');
+    const size = 32, cx = c.width / 2, cy = c.height / 2;
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    // Pointy-top hex vertices
+    function hexCorners(hx, hy, s) {
+      const pts = [];
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI / 180 * (60 * i - 30);
+        pts.push([hx + s * Math.cos(angle), hy + s * Math.sin(angle)]);
+      }
+      return pts;
+    }
+
+    function drawHex(hx, hy, fill) {
+      const pts = hexCorners(hx, hy, size);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < 6; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Axial to pixel (pointy-top)
+    function axToPixel(q, r) {
+      const x = size * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r);
+      const y = size * (3/2 * r);
+      return [cx + x, cy + y];
+    }
+
+    // Draw ring of neighbours + centre
+    const axialNeighbors = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+
+    // Background hexes
+    for (const [dq, dr] of axialNeighbors) {
+      const [hx, hy] = axToPixel(dq, dr);
+      drawHex(hx, hy, null);
+    }
+    drawHex(cx, cy, 'rgba(15, 52, 96, 0.15)');
+
+    // Centre dot
+    ctx.fillStyle = var_accent();
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+
+    // Lines to all neighbours — all green (equal distance)
+    for (const [dq, dr] of axialNeighbors) {
+      const [nx, ny] = axToPixel(dq, dr);
+      ctx.strokeStyle = '#27ae60';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(nx, ny); ctx.stroke();
+
+      // Label
+      const lx = cx + (nx - cx) * 0.55, ly = cy + (ny - cy) * 0.55;
+      ctx.fillStyle = '#1e8449';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('1.0', lx, ly - 6);
+    }
+
+    ctx.fillStyle = '#333';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🟢 All neighbours = 1.0', c.width / 2, c.height - 10);
+  }
+
+  function var_accent() { return '#0f3460'; }
+
+  drawSquareGrid('squareCanvas');
+  drawHexGrid('hexCanvas');
+})();
+
+// ── Widget 3: Risk mapping ─────────────────────────────────
+(function() {
+  const widget = document.getElementById('riskMappingWidget');
+  const sliders = widget.querySelectorAll('input[type="range"]');
+  const canvas = document.getElementById('riskProfileCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function getTerrainValues() {
+    const v = {};
+    sliders.forEach(s => {
+      v[s.dataset.terrain] = parseInt(s.value) / 100;
+      s.nextElementSibling.textContent = (parseInt(s.value) / 100).toFixed(2);
+    });
+    return v;
+  }
+
+  function terrainToRisk(t) {
+    return {
+      animals: Math.min(1, t.vegetation * 0.9),
+      cold:    Math.min(1, t.elevation * 0.7 + (1 - t.temperature) * 0.4),
+      heat:    Math.min(1, t.temperature * 0.95),
+      water:   Math.min(1, (1 - t.water) * 0.85),
+      thief:   Math.min(1, t.bandit * 0.9),
+    };
+  }
+
+  function drawRiskProfile() {
+    const t = getTerrainValues();
+    const risk = terrainToRisk(t);
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const barW = 36, gap = 12, total = RISK_NAMES.length;
+    const chartW = total * barW + (total - 1) * gap;
+    const startX = (w - chartW) / 2;
+    const maxH = h - 40;
+
+    RISK_NAMES.forEach((name, i) => {
+      const x = startX + i * (barW + gap);
+      const val = risk[name];
+      const barH = val * maxH;
+
+      ctx.fillStyle = RISK_COLORS[name];
+      ctx.fillRect(x, h - 20 - barH, barW, barH);
+
+      ctx.fillStyle = '#555';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(RISK_LABELS[name], x + barW / 2, h - 4);
+      ctx.fillStyle = RISK_COLORS[name];
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(val.toFixed(2), x + barW / 2, h - 24 - barH);
+    });
+  }
+
+  sliders.forEach(s => s.addEventListener('input', drawRiskProfile));
+  drawRiskProfile();
+})();
+
+// ── Widget 4: Appetite / Cost ──────────────────────────────
+(function() {
+  const container = document.getElementById('appetiteSliders');
+  const sliders = container.querySelectorAll('input[type="range"]');
+  const canvas = document.getElementById('appetiteCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const fixedRisk = { animals: 0.6, cold: 0.3, heat: 0.8, water: 0.5, thief: 0.2 };
+  const riskWeight = 10;
+
+  function getAppetites() {
+    const a = {};
+    sliders.forEach(s => {
+      a[s.dataset.risk] = parseInt(s.value) / 100;
+      s.parentElement.querySelector('.value').textContent = (parseInt(s.value) / 100).toFixed(2);
+    });
+    return a;
+  }
+
+  function drawCostBars() {
+    const appetite = getAppetites();
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const barW = 40, gap = 10, total = RISK_NAMES.length;
+    const chartW = total * barW + (total - 1) * gap;
+    const startX = (w - chartW) / 2;
+    const maxH = h - 50;
+
+    let maxCost = 0;
+    const costs = {};
+    RISK_NAMES.forEach(name => {
+      costs[name] = fixedRisk[name] * (1 - appetite[name]) * riskWeight;
+      if (costs[name] > maxCost) maxCost = costs[name];
+    });
+    if (maxCost === 0) maxCost = 1;
+    const scale = maxH / Math.max(maxCost, riskWeight * 1);
+
+    RISK_NAMES.forEach((name, i) => {
+      const x = startX + i * (barW + gap);
+      const barH = costs[name] * scale;
+
+      // Risk portion (faded)
+      const fullH = fixedRisk[name] * riskWeight * scale;
+      ctx.fillStyle = RISK_COLORS[name] + '30';
+      ctx.fillRect(x, h - 30 - fullH, barW, fullH);
+
+      // Effective cost
+      ctx.fillStyle = RISK_COLORS[name];
+      ctx.fillRect(x, h - 30 - barH, barW, barH);
+
+      ctx.fillStyle = '#555';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(RISK_LABELS[name], x + barW / 2, h - 14);
+      ctx.fillStyle = RISK_COLORS[name];
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(costs[name].toFixed(1), x + barW / 2, h - 34 - barH);
+    });
+
+    // Total
+    const totalCost = Object.values(costs).reduce((a, b) => a + b, 0);
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Total cell cost: ' + totalCost.toFixed(1), w / 2, 16);
+
+    ctx.fillStyle = '#999';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('(faded = full risk, solid = after appetite)', w / 2, 32);
+  }
+
+  sliders.forEach(s => s.addEventListener('input', drawCostBars));
+  drawCostBars();
+})();
+
+// ── Widget 5: COA stacked bars ─────────────────────────────
+(function() {
+  const container = document.getElementById('coaBars');
+  const legendEl = document.getElementById('coaLegend');
+  const seedSlider = document.getElementById('coaSeed');
+  const seedLabel = document.getElementById('coaSeedVal');
+
+  // Build legend once
+  RISK_NAMES.forEach(name => {
+    const item = document.createElement('span');
+    item.className = 'legend-item';
+    item.innerHTML = `<span class="legend-swatch" style="background:${RISK_COLORS[name]}"></span>${RISK_LABELS[name]}`;
+    legendEl.appendChild(item);
+  });
+
+  function generateCOAs(seed) {
+    const rng = mulberry32(seed);
+    const coas = [];
+    const coaLabels = ['Best route', 'Alternative 1', 'Alternative 2'];
+    for (let c = 0; c < 3; c++) {
+      const steps = 4 + Math.floor(rng() * 3) + c; // Longer alternatives
+      const cells = [];
+      for (let s = 0; s < steps; s++) {
+        const profile = {};
+        RISK_NAMES.forEach(name => {
+          // Bias each COA differently
+          let base = rng() * 0.8;
+          if (c === 1 && name === 'heat') base *= 0.3; // Alt1 avoids heat
+          if (c === 1 && name === 'thief') base = Math.min(1, base + 0.4); // but more thieves
+          if (c === 2 && name === 'animals') base *= 0.2; // Alt2 avoids animals
+          if (c === 2 && name === 'cold') base = Math.min(1, base + 0.3); // but colder
+          profile[name] = base * (1 - 0.5) * 10; // appetite 0.5
+        });
+        cells.push(profile);
+      }
+      const total = cells.reduce((sum, cell) =>
+        sum + RISK_NAMES.reduce((s, n) => s + cell[n], 0), 0);
+      coas.push({ label: coaLabels[c], cells, total });
+    }
+    return coas;
+  }
+
+  function renderCOAs() {
+    const seed = parseInt(seedSlider.value);
+    seedLabel.textContent = seed;
+    const coas = generateCOAs(seed);
+    container.innerHTML = '';
+
+    // Find max cell cost for scaling
+    let maxCellCost = 0;
+    coas.forEach(coa => coa.cells.forEach(cell => {
+      const cellTotal = RISK_NAMES.reduce((s, n) => s + cell[n], 0);
+      if (cellTotal > maxCellCost) maxCellCost = cellTotal;
+    }));
+
+    const maxBarH = 180;
+
+    coas.forEach(coa => {
+      const col = document.createElement('div');
+      col.className = 'bar-col';
+
+      const costLabel = document.createElement('div');
+      costLabel.className = 'bar-cost';
+      costLabel.textContent = coa.total.toFixed(1);
+      col.appendChild(costLabel);
+
+      // Row of mini stacked bars
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '2px';
+      row.style.alignItems = 'flex-end';
+
+      coa.cells.forEach(cell => {
+        const bar = document.createElement('div');
+        bar.className = 'stacked-bar';
+        const cellTotal = RISK_NAMES.reduce((s, n) => s + cell[n], 0);
+        const barH = (cellTotal / maxCellCost) * maxBarH;
+        bar.style.height = barH + 'px';
+        bar.style.width = '14px';
+
+        RISK_NAMES.forEach(name => {
+          const seg = document.createElement('div');
+          seg.className = 'segment';
+          const fraction = cellTotal > 0 ? cell[name] / cellTotal : 0;
+          seg.style.height = (fraction * 100) + '%';
+          seg.style.background = RISK_COLORS[name];
+          bar.appendChild(seg);
+        });
+
+        row.appendChild(bar);
+      });
+
+      col.appendChild(row);
+
+      const label = document.createElement('div');
+      label.className = 'bar-label';
+      label.textContent = coa.label;
+      col.appendChild(label);
+
+      container.appendChild(col);
+    });
+  }
+
+  seedSlider.addEventListener('input', renderCOAs);
+  renderCOAs();
+})();
+</script>
+
+</body>
+</html>
