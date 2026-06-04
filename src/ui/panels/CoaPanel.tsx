@@ -53,7 +53,9 @@ export function CoaPanel() {
               {coa.arrivalTimeMinutes > coa.departureTimeMinutes && (
                 <span className="coa-timing">
                   {formatTime(coa.departureTimeMinutes)} → {formatTime(coa.arrivalTimeMinutes)}
-                  {coa.speedKmh !== null && ` · ${coa.speedKmh} km/h`}
+                  {coa.speedKmh !== null
+                    ? ` · ${coa.speedKmh} km/h`
+                    : ' · Dynamic speed'}
                 </span>
               )}
             </header>
@@ -105,17 +107,14 @@ function JourneySettings() {
           }
         >
           <option value="fixed">Fixed speed</option>
-          <option value="optimal" disabled>
-            Optimal speed
-          </option>
-          <option value="dynamic" disabled>
-            Dynamic speed
-          </option>
+          <option value="optimal">Optimal speed</option>
+          <option value="dynamic">Dynamic speed</option>
         </select>
       </label>
-      {journeyParams.speedMode === 'fixed' && (
+      {(journeyParams.speedMode === 'fixed' || journeyParams.speedMode === 'optimal') && (
         <label className="journey-field">
-          Speed {journeyParams.fixedSpeedKmh} km/h
+          {journeyParams.speedMode === 'optimal' ? 'Start speed' : 'Speed'}{' '}
+          {journeyParams.fixedSpeedKmh} km/h
           <input
             type="range"
             min={SPEED_MIN_KMH}

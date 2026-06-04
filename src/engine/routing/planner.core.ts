@@ -24,6 +24,8 @@ import {
   movementCost,
   RISK_TYPES,
   riskCostBreakdown,
+  SPEED_MAX_KMH,
+  SPEED_MIN_KMH,
   speedModifiedProfile,
   toCellId,
   worldDistance,
@@ -66,6 +68,9 @@ const MAX_OVERLAP = 0.8;
 
 const NO_USAGE: ReadonlyMap<CellId, number> = new Map();
 const NO_BLOCKS: ReadonlySet<CellId> = new Set();
+
+/** Six discrete speeds tried when optimising for the best constant speed. */
+const CANDIDATE_SPEEDS = [5, 10, 15, 20, 25, 30] as const;
 
 interface Strategy {
   label: string;
@@ -281,7 +286,8 @@ function aStar(
     return c ? worldDistance(c, goalCenter) * params.distanceWeightKm : 0;
   };
 
-  const speed = temporal.journeyParams.fixedSpeedKmh;
+  const isDynamic = temporal.journeyParams.speedMode === 'dynamic';
+  const fixedSpeed = temporal.journeyParams.fixedSpeedKmh;
 
   const gScore = new Map<CellId, number>([[src, 0]]);
   const travelDistKm = new Map<CellId, number>([[src, 0]]);
@@ -311,23 +317,37 @@ function aStar(
 
       const legDistKm = worldDistance(fromCenter, toCenter);
       const newDistKm = distCurrent + legDistKm;
-      const arrivalMin =
-        temporal.journeyParams.startTime + ((legStartDistKm + newDistKm) / speed) * 60;
-
-      // Apply full modifier chain to get time-adjusted profile.
-      const profile = applyAllModifiers(graph.riskAt(next), next, arrivalMin, speed, temporal);
-
-      const base = movementCost(legDistKm, params) + cellRiskCost(profile, params);
+      const totalDistKm = legStartDistKm + newDistKm;
       const uses = usage.get(next) ?? 0;
-      let edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
+
+      let edge: number;
+      let arrivalMin: number;
+
+      if (isDynamic) {
+        // Try SPEED_MIN and SPEED_MAX; pick whichever gives lower entry cost.
+        let bestBase = Infinity;
+        let bestArrival = 0;
+        for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
+          const arr = temporal.journeyParams.startTime + (totalDistKm / s) * 60;
+          const prof = applyAllModifiers(graph.riskAt(next), next, arr, s, temporal);
+          const base = movementCost(legDistKm, params) + cellRiskCost(prof, params);
+          if (base < bestBase) {
+            bestBase = base;
+            bestArrival = arr;
+          }
+        }
+        arrivalMin = bestArrival;
+        edge = uses > 0 ? bestBase * (1 + DIVERSITY_PENALTY * uses) : bestBase;
+      } else {
+        arrivalMin = temporal.journeyParams.startTime + (totalDistKm / fixedSpeed) * 60;
+        const profile = applyAllModifiers(graph.riskAt(next), next, arrivalMin, fixedSpeed, temporal);
+        const base = movementCost(legDistKm, params) + cellRiskCost(profile, params);
+        edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
+      }
 
       // Soft window penalty when this neighbour is the destination waypoint.
       if (next === dst && dstWaypointIdx >= 0) {
-        edge += windowPenalty(
-          arrivalMin,
-          temporal.waypointWindows[dstWaypointIdx] ?? null,
-          params,
-        );
+        edge += windowPenalty(arrivalMin, temporal.waypointWindows[dstWaypointIdx] ?? null, params);
       }
 
       const tentative = gCurrent + edge;
@@ -427,28 +447,47 @@ function buildCoa(
   const riskTotals = zeroRisk();
   let totalCost = 0;
   let totalDistanceKm = 0;
-  const speed = temporal.journeyParams.fixedSpeedKmh;
+  const isDynamic = temporal.journeyParams.speedMode === 'dynamic';
+  const fixedSpeed = temporal.journeyParams.fixedSpeedKmh;
   const waypointArrivals: number[] = new Array(temporal.waypoints.length).fill(
     temporal.journeyParams.startTime,
   ) as number[];
 
   path.forEach((cellId, i) => {
+    let legKm = 0;
     let move = 0;
     if (i > 0) {
       const a = graph.centerOf(path[i - 1]!);
       const b = graph.centerOf(cellId);
       if (a && b) {
-        const km = worldDistance(a, b);
-        totalDistanceKm += km;
-        move = movementCost(km, params);
+        legKm = worldDistance(a, b);
+        totalDistanceKm += legKm;
+        move = movementCost(legKm, params);
       }
     }
 
-    const arrivalMin =
-      temporal.journeyParams.startTime + (totalDistanceKm / speed) * 60;
+    // Dynamic: pick the speed that minimises entry cost at this step.
+    let chosenSpeed: number;
+    if (isDynamic) {
+      let bestCost = Infinity;
+      chosenSpeed = SPEED_MIN_KMH;
+      for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
+        const arr = temporal.journeyParams.startTime + (totalDistanceKm / s) * 60;
+        const prof = applyAllModifiers(graph.riskAt(cellId), cellId, arr, s, temporal);
+        const cost = move + cellRiskCost(prof, params);
+        if (cost < bestCost) {
+          bestCost = cost;
+          chosenSpeed = s;
+        }
+      }
+    } else {
+      chosenSpeed = fixedSpeed;
+    }
+
+    const arrivalMin = temporal.journeyParams.startTime + (totalDistanceKm / chosenSpeed) * 60;
 
     // Apply same modifier chain as A* for consistency.
-    const profile = applyAllModifiers(graph.riskAt(cellId), cellId, arrivalMin, speed, temporal);
+    const profile = applyAllModifiers(graph.riskAt(cellId), cellId, arrivalMin, chosenSpeed, temporal);
     const perRisk = riskCostBreakdown(profile, params);
 
     let stepCost = move;
@@ -457,7 +496,7 @@ function buildCoa(
       stepCost += perRisk[r];
     }
     totalCost += stepCost;
-    steps.push({ cellId, perRisk, movementCost: move, stepCost, arrivalTimeMinutes: arrivalMin, speedKmh: speed });
+    steps.push({ cellId, perRisk, movementCost: move, stepCost, arrivalTimeMinutes: arrivalMin, speedKmh: chosenSpeed });
 
     // Record arrival time at each waypoint.
     const wpIdx = temporal.waypoints.indexOf(cellId);
@@ -477,7 +516,7 @@ function buildCoa(
     departureTimeMinutes: temporal.journeyParams.startTime,
     arrivalTimeMinutes: lastArrival,
     waypointArrivals,
-    speedKmh: speed,
+    speedKmh: isDynamic ? null : fixedSpeed,
   };
 }
 
@@ -542,6 +581,101 @@ function optimiseWaypointOrder(
   return ordered;
 }
 
+// --- Planning strategies ---------------------------------------------------
+
+/**
+ * Run the 3-strategy search + fan-out for a single fixed speed (or dynamic)
+ * and return up to `coaCount` accepted paths. This is the inner kernel shared
+ * by Fixed, Dynamic, and each speed candidate in Optimal mode.
+ */
+function planFixed(
+  graph: Graph,
+  sequence: readonly CellId[],
+  params: CostParams,
+  coaCount: number,
+  blocked: ReadonlySet<CellId>,
+  temporal: TemporalContext,
+): Array<{ path: CellId[]; cells: Set<CellId> }> {
+  const usage = new Map<CellId, number>();
+  const seen = new Set<string>();
+  const accepted: { path: CellId[]; cells: Set<CellId> }[] = [];
+
+  const accept = (path: CellId[], enforceDistinct: boolean): boolean => {
+    if (path.length === 0) return false;
+    const signature = path.join('>');
+    if (seen.has(signature)) return false;
+    if (enforceDistinct) {
+      for (const prior of accepted) {
+        if (overlap(prior.cells, path) > MAX_OVERLAP) return false;
+      }
+    }
+    seen.add(signature);
+    for (const id of path) usage.set(id, (usage.get(id) ?? 0) + 1);
+    accepted.push({ path, cells: new Set(path) });
+    return true;
+  };
+
+  // 1) Three strategy biases.
+  for (const strategy of STRATEGIES) {
+    if (accepted.length >= coaCount) break;
+    accept(
+      pathThroughSequence(graph, sequence, scaleParams(params, strategy), NO_USAGE, blocked, temporal),
+      true,
+    );
+  }
+  // 2) Fan out under real params, penalising used cells.
+  for (let guard = 0; accepted.length < coaCount && guard < coaCount + 2; guard++) {
+    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), true)) break;
+  }
+  // 3) Fill with relaxed distinctness if still short.
+  for (let guard = 0; accepted.length < coaCount && guard < coaCount + 2; guard++) {
+    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), false)) break;
+  }
+  return accepted;
+}
+
+/**
+ * Optimal speed: run `planFixed` for each candidate speed, collect all COAs,
+ * sort cheapest-first, then deduplicate by Jaccard similarity to keep paths
+ * genuinely diverse. Returns up to `coaCount` COAs, each tagged with the speed
+ * that made it cheapest.
+ */
+function planOptimal(
+  graph: Graph,
+  sequence: readonly CellId[],
+  params: CostParams,
+  coaCount: number,
+  blocked: ReadonlySet<CellId>,
+  temporal: TemporalContext,
+): Coa[] {
+  const allCoas: Coa[] = [];
+  for (const speed of CANDIDATE_SPEEDS) {
+    const t: TemporalContext = {
+      ...temporal,
+      journeyParams: { ...temporal.journeyParams, fixedSpeedKmh: speed, speedMode: 'fixed' },
+    };
+    const accepted = planFixed(graph, sequence, params, coaCount, blocked, t);
+    for (const { path } of accepted) {
+      allCoas.push(buildCoa('tmp', 'route', path, graph, params, t));
+    }
+  }
+  // Sort cheapest first.
+  allCoas.sort((a, b) => a.totalCost - b.totalCost);
+  // Deduplicate: keep a COA only if it isn't too similar to an already-accepted one.
+  const result: Coa[] = [];
+  const resultSets: Set<CellId>[] = [];
+  for (const coa of allCoas) {
+    const coaSet = new Set(coa.path);
+    const tooSimilar = resultSets.some((s) => overlap(s, coa.path) > MAX_OVERLAP);
+    if (!tooSimilar) {
+      result.push(coa);
+      resultSets.push(coaSet);
+      if (result.length >= coaCount) break;
+    }
+  }
+  return result;
+}
+
 // --- Entry point -----------------------------------------------------------
 
 export function planRoutes(request: RouteRequest): RoutePlan {
@@ -563,57 +697,17 @@ export function planRoutes(request: RouteRequest): RoutePlan {
     waypoints: request.waypoints,
   };
 
-  const usage = new Map<CellId, number>();
-  const seen = new Set<string>();
-  const accepted: { path: CellId[]; cells: Set<CellId> }[] = [];
+  let coas: Coa[];
 
-  /**
-   * Record a path as a COA if it's new and (when `enforceDistinct`) not a
-   * near-duplicate of one already accepted. Tally accepted cells in `usage` so
-   * later searches are pushed onto fresh ground.
-   */
-  const accept = (path: CellId[], enforceDistinct: boolean): boolean => {
-    if (path.length === 0) return false;
-    const signature = path.join('>');
-    if (seen.has(signature)) return false;
-    if (enforceDistinct) {
-      for (const prior of accepted) {
-        if (overlap(prior.cells, path) > MAX_OVERLAP) return false;
-      }
-    }
-    seen.add(signature);
-    for (const id of path) usage.set(id, (usage.get(id) ?? 0) + 1);
-    accepted.push({ path, cells: new Set(path) });
-    return true;
-  };
-
-  // 1) Three strategy biases (each scored later under the real params), preferring
-  //    genuinely distinct routes.
-  for (const strategy of STRATEGIES) {
-    if (accepted.length >= coaCount) break;
-    accept(
-      pathThroughSequence(graph, sequence, scaleParams(params, strategy), NO_USAGE, blocked, temporal),
-      true,
-    );
+  if (temporal.journeyParams.speedMode === 'optimal') {
+    coas = planOptimal(graph, sequence, params, coaCount, blocked, temporal);
+  } else {
+    // Fixed or Dynamic: one planning pass with the configured temporal context.
+    const accepted = planFixed(graph, sequence, params, coaCount, blocked, temporal);
+    coas = accepted.map((a, i) => buildCoa(`coa-${i}`, 'route', a.path, graph, params, temporal));
+    coas.sort((a, b) => a.totalCost - b.totalCost);
   }
 
-  // 2) Fan out under the real params, penalising used cells, still preferring
-  //    distinct routes.
-  for (let guard = 0; accepted.length < coaCount && guard < coaCount + 2; guard++) {
-    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), true)) break;
-  }
-
-  // 3) Fill: if the distinctness rule left us short but more exact alternatives
-  //    exist, relax to exact-dedup so we still return up to `coaCount`.
-  for (let guard = 0; accepted.length < coaCount && guard < coaCount + 2; guard++) {
-    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), false)) break;
-  }
-
-  // Rank best-first under the real params, then label by rank.
-  const coas: Coa[] = accepted.map((a, i) =>
-    buildCoa(`coa-${i}`, 'route', a.path, graph, params, temporal),
-  );
-  coas.sort((a, b) => a.totalCost - b.totalCost);
   coas.forEach((coa, i) => {
     coa.id = `coa-${i}`;
     coa.label = i === 0 ? 'Best route' : `Alternative ${i}`;
