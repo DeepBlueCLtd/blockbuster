@@ -562,7 +562,8 @@
   </div>
   <p class="note">
     Each hexagon is shaded by its traversal cost — green is cheap, red is costly — exactly the risk-weighted cost the planner minimises.
-    <strong>Click any cell</strong> to toggle it into an impassable obstacle (the engine calls these <em>blocked</em> cells) and watch A* route around it. Drag the <em>New map</em> slider to regenerate the cost field.
+    The two dark clusters are pre-placed <em>blocked</em> cells — impassable terrain the planner must route around.
+    <strong>Click any cell</strong> to add or remove blocked cells and watch A* adapt. Drag the <em>New map</em> slider to regenerate the cost field (blocking clusters reset with the map).
   </p>
 </div>
 
@@ -1263,7 +1264,11 @@ function mulberry32(seed) {
   }
 
   // ── A* state ──
-  const walls = new Set();
+  // Two pre-built clusters of impassable cells restored each time the map regenerates.
+  const defaultWalls = [[3,3],[4,3],[3,4],[4,4],[3,5],    // left-centre cluster
+                         [9,1],[10,1],[9,2],[10,2],[10,3]] // right-centre cluster
+    .map(([c,r]) => key(c,r));
+  const walls = new Set(defaultWalls);
   let open, gScore, cameFrom, closed, current, finished, pathCells, expanded, seq;
   let playing = false, timer = null;
 
@@ -1450,6 +1455,7 @@ function mulberry32(seed) {
   seedEl.addEventListener('input', () => {
     seedVal.textContent = seedEl.value;
     walls.clear();
+    defaultWalls.forEach((k) => walls.add(k));
     costs = makeCosts(parseInt(seedEl.value, 10));
     reset();
   });
@@ -1477,6 +1483,7 @@ function mulberry32(seed) {
   heurVal.textContent = heurLabel();
   seedVal.textContent = seedEl.value;
   costs = makeCosts(parseInt(seedEl.value, 10));
+
   reset();
 })();
 </script>
