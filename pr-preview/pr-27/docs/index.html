@@ -205,6 +205,38 @@
     margin-top: 0.75rem;
   }
 
+  .widget button {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .widget button:hover { background: var(--accent2); }
+
+  .widget button.secondary {
+    background: #fff;
+    color: var(--accent);
+  }
+
+  .widget button.secondary:hover { background: #eef2f6; }
+
+  .checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .checkbox-label input { margin: 0; }
+
   .glossary-table {
     width: 100%;
     border-collapse: collapse;
@@ -486,6 +518,54 @@
 <p>
   Because the heuristic never overestimates, A* is guaranteed to find the optimal path. On a hex grid with ~100 cells and degree 6, this runs in well under 50 ms.
 </p>
+
+<p>
+  The widget below makes that search <strong>visible</strong>. A* explores outward from the start, always opening the most promising cell next — the one with the lowest <em>f = g + h</em>. Step through it, or press <em>Play</em>, and watch the two sets grow: the <strong>frontier</strong> (gold outlines — cells discovered but not yet committed) and the <strong>explored</strong> set (navy — cells whose best cost is now settled). When the frontier reaches the goal, the path is traced back through the recorded parent links.
+</p>
+<p>
+  The most instructive control is the <strong>heuristic weight</strong>. Slide it to <strong>0</strong> and A* degenerates into <strong>Dijkstra's algorithm</strong> — with no sense of direction it explores in an expanding blob, equally in all directions. At weight <strong>1</strong> it is true A*: the same optimal path, but the explored set is visibly pulled toward the goal, so far fewer cells are touched. Push it <strong>above 1</strong> and it becomes <strong>greedy / weighted</strong> — it rushes at the goal and finishes even faster, but may settle for a slightly costlier route. This is the central trade-off in heuristic search, the same one the <a href="https://www.redblobgames.com/pathfinding/a-star/introduction.html" target="_blank" rel="noopener">Red Blob Games</a> tutorials illustrate.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — watch A* explore the cost-weighted hex grid</div>
+  <canvas id="astarCanvas" width="600" height="320" style="background:#eef1f4; cursor:pointer; width:100%; max-width:600px;"></canvas>
+  <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin:0.85rem 0 0.6rem;">
+    <button id="astarPlay" type="button">▶ Play</button>
+    <button id="astarStep" type="button" class="secondary">Step ▷</button>
+    <button id="astarReset" type="button" class="secondary">↺ Reset</button>
+    <label class="checkbox-label"><input type="checkbox" id="astarScores"> show g / f scores</label>
+  </div>
+  <div class="slider-row">
+    <label>Heuristic</label>
+    <input type="range" id="astarHeur" min="0" max="280" value="100">
+    <span class="value" id="astarHeurVal" style="min-width:7.5em;">A* (optimal)</span>
+  </div>
+  <div class="slider-row">
+    <label>Speed</label>
+    <input type="range" id="astarSpeed" min="2" max="60" value="16">
+    <span class="value" id="astarSpeedVal">16/s</span>
+  </div>
+  <div class="slider-row">
+    <label>New map</label>
+    <input type="range" id="astarSeed" min="1" max="120" value="7">
+    <span class="value" id="astarSeedVal">7</span>
+  </div>
+  <div id="astarStats" style="margin-top:0.6rem; font-size:0.9rem; color:#444; font-variant-numeric:tabular-nums;"></div>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch" style="background:#27ae60"></span>Start</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#c0392b"></span>Goal</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:rgba(15,52,96,0.55)"></span>Explored</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#fff; border:2px solid #f1c40f"></span>Frontier</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#111"></span>Path</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#3b3f46"></span>Wall</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:linear-gradient(90deg,#50a05a,#f1c40f,#c0392b)"></span>cell cost (low→high)</span>
+  </div>
+  <p class="note">
+    Each hexagon is shaded by its traversal cost — green is cheap, red is costly — exactly the risk-weighted cost the planner minimises.
+    <strong>Click any cell</strong> to toggle it into an impassable obstacle (the engine calls these <em>blocked</em> cells) and watch A* route around it. Drag the <em>New map</em> slider to regenerate the cost field.
+  </p>
+</div>
+
 <p>
   Multi-waypoint routes are computed <strong>segment by segment</strong>: A* is run independently between each consecutive pair of waypoints, and the resulting sub-paths are concatenated.
 </p>
@@ -1070,6 +1150,334 @@ function mulberry32(seed) {
 
   seedSlider.addEventListener('input', renderCOAs);
   renderCOAs();
+})();
+
+// ── Widget 6: A* search visualisation ──────────────────────
+(function() {
+  const canvas = document.getElementById('astarCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const playBtn   = document.getElementById('astarPlay');
+  const stepBtn   = document.getElementById('astarStep');
+  const resetBtn  = document.getElementById('astarReset');
+  const scoresChk = document.getElementById('astarScores');
+  const heurEl    = document.getElementById('astarHeur');
+  const heurVal   = document.getElementById('astarHeurVal');
+  const speedEl   = document.getElementById('astarSpeed');
+  const speedVal  = document.getElementById('astarSpeedVal');
+  const seedEl    = document.getElementById('astarSeed');
+  const seedVal   = document.getElementById('astarSeedVal');
+  const statsEl   = document.getElementById('astarStats');
+
+  // ── Grid geometry (pointy-top, odd-r offset coordinates) ──
+  const COLS = 14, ROWS = 9, SIZE = 18;
+  const SQRT3 = Math.sqrt(3);
+  const gridW = SQRT3 * SIZE * (COLS + 0.5);
+  const gridH = 1.5 * SIZE * (ROWS - 1) + 2 * SIZE;
+  const ox = (canvas.width  - gridW) / 2 + SQRT3 * SIZE / 2;
+  const oy = (canvas.height - gridH) / 2 + SIZE;
+
+  const MOVE_COST   = 1;   // flat per-step movement cost (the heuristic's floor)
+  const RISK_WEIGHT = 9;   // risk scaling, mirroring the app's w_risk
+
+  const START = { col: 0, row: ROWS - 1 };
+  const GOAL  = { col: COLS - 1, row: 0 };
+  const startKey = key(START.col, START.row);
+  const goalKey  = key(GOAL.col, GOAL.row);
+
+  function key(col, row) { return col + ',' + row; }
+  function fromKey(k) { const i = k.indexOf(','); return [+k.slice(0, i), +k.slice(i + 1)]; }
+  function inGrid(col, row) { return col >= 0 && col < COLS && row >= 0 && row < ROWS; }
+
+  // odd-r neighbour offsets: index 0 = even rows, 1 = odd rows
+  const ODDR = [
+    [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]],
+    [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]],
+  ];
+  function neighbors(col, row) {
+    const out = [];
+    for (const [dc, dr] of ODDR[row & 1]) {
+      const nc = col + dc, nr = row + dr;
+      if (inGrid(nc, nr)) out.push([nc, nr]);
+    }
+    return out;
+  }
+  function cube(col, row) {
+    const q = col - (row - (row & 1)) / 2;
+    return [q, row, -q - row];
+  }
+  function hexDist(ac, ar, bc, br) {
+    const a = cube(ac, ar), b = cube(bc, br);
+    return (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])) / 2;
+  }
+  function center(col, row) {
+    return [
+      ox + SQRT3 * SIZE * (col + 0.5 * (row & 1)),
+      oy + 1.5 * SIZE * row,
+    ];
+  }
+  function hexPath(x, y) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.PI / 180 * (60 * i - 30);
+      const px = x + SIZE * Math.cos(ang), py = y + SIZE * Math.sin(ang);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
+
+  // ── Cost field: smooth value-noise from the seed ──
+  let costs = new Map();
+  function makeCosts(seed) {
+    const rng = mulberry32(seed);
+    const LW = 5, LH = 4;
+    const lat = [];
+    for (let i = 0; i < (LW + 1) * (LH + 1); i++) lat.push(rng());
+    const smooth = (t) => t * t * (3 - 2 * t);
+    const at = (a, b) => lat[Math.min(b, LH) * (LW + 1) + Math.min(a, LW)];
+    function noise(fx, fy) {
+      const x = fx * LW, y = fy * LH;
+      const ix = Math.floor(x), iy = Math.floor(y);
+      const tx = smooth(x - ix), ty = smooth(y - iy);
+      const top = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * tx;
+      const bot = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * tx;
+      return top + (bot - top) * ty;
+    }
+    const m = new Map();
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        let r = noise(col / (COLS - 1), row / (ROWS - 1));
+        r = Math.max(0, Math.min(1, (r - 0.15) / 0.7)); // stretch contrast
+        m.set(key(col, row), MOVE_COST + r * RISK_WEIGHT);
+      }
+    }
+    return m;
+  }
+  function costColor(c) {
+    const t = Math.max(0, Math.min(1, (c - MOVE_COST) / RISK_WEIGHT));
+    let r, g, b;
+    if (t < 0.5) { const u = t / 0.5; r = 80 + u * 161; g = 160 + u * 36; b = 90 - u * 75; }
+    else { const u = (t - 0.5) / 0.5; r = 241 - u * 49; g = 196 - u * 139; b = 15 + u * 28; }
+    return `rgb(${r | 0},${g | 0},${b | 0})`;
+  }
+
+  // ── A* state ──
+  const walls = new Set();
+  let open, gScore, cameFrom, closed, current, finished, pathCells, expanded, seq;
+  let playing = false, timer = null;
+
+  const heurWeight = () => parseInt(heurEl.value, 10) / 100;
+  const hCost = (col, row) => hexDist(col, row, GOAL.col, GOAL.row) * MOVE_COST * heurWeight();
+
+  function pushOpen(col, row, g) {
+    open.push({ col, row, g, f: g + hCost(col, row), seq: seq++ });
+  }
+  function popOpen() {
+    let bi = -1, best = null;
+    for (let i = 0; i < open.length; i++) {
+      const o = open[i];
+      if (!best || o.f < best.f || (o.f === best.f && o.seq < best.seq)) { best = o; bi = i; }
+    }
+    if (bi < 0) return null;
+    open.splice(bi, 1);
+    return best;
+  }
+
+  function reset() {
+    stopPlay();
+    open = []; gScore = new Map(); cameFrom = new Map(); closed = new Set();
+    current = null; finished = false; pathCells = null; expanded = 0; seq = 0;
+    gScore.set(startKey, 0);
+    pushOpen(START.col, START.row, 0);
+    render(); updateStats();
+  }
+
+  function reconstruct() {
+    const path = [];
+    let k = goalKey;
+    while (true) {
+      const [c, r] = fromKey(k);
+      path.push({ col: c, row: r });
+      if (k === startKey) break;
+      const p = cameFrom.get(k);
+      if (p === undefined) break;
+      k = p;
+    }
+    pathCells = path.reverse();
+  }
+
+  function step() {
+    if (finished) return;
+    let node = popOpen();
+    while (node && closed.has(key(node.col, node.row))) node = popOpen(); // skip stale duplicates
+    if (!node) { finished = true; pathCells = null; current = null; render(); updateStats(); return; }
+    current = node;
+    const ck = key(node.col, node.row);
+    if (ck === goalKey) { finished = true; reconstruct(); render(); updateStats(); return; }
+    closed.add(ck); expanded++;
+    const gCur = gScore.get(ck);
+    for (const [nc, nr] of neighbors(node.col, node.row)) {
+      const nk = key(nc, nr);
+      if (closed.has(nk) || walls.has(nk)) continue;
+      const tentative = gCur + costs.get(nk);
+      if (tentative < (gScore.has(nk) ? gScore.get(nk) : Infinity)) {
+        gScore.set(nk, tentative);
+        cameFrom.set(nk, ck);
+        pushOpen(nc, nr, tentative);
+      }
+    }
+    render(); updateStats();
+  }
+
+  // ── Rendering ──
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const openKeys = new Set(open.filter((o) => !closed.has(key(o.col, o.row))).map((o) => key(o.col, o.row)));
+
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const k = key(col, row);
+        const [x, y] = center(col, row);
+        hexPath(x, y);
+        ctx.fillStyle = walls.has(k) ? '#3b3f46' : costColor(costs.get(k));
+        ctx.fill();
+        if (!walls.has(k) && closed.has(k)) { hexPath(x, y); ctx.fillStyle = 'rgba(15,52,96,0.5)'; ctx.fill(); }
+        ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.stroke();
+      }
+    }
+
+    // frontier outlines
+    for (const k of openKeys) {
+      const [c, r] = fromKey(k);
+      const [x, y] = center(c, r);
+      hexPath(x, y); ctx.lineWidth = 2.5; ctx.strokeStyle = '#f1c40f'; ctx.stroke();
+    }
+
+    // current cell being expanded
+    if (current && !finished) {
+      const [x, y] = center(current.col, current.row);
+      hexPath(x, y); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+    }
+
+    // optional g / f labels
+    if (scoresChk.checked) {
+      ctx.textAlign = 'center';
+      ctx.font = '8px sans-serif';
+      for (const [k, g] of gScore) {
+        if (walls.has(k)) continue;
+        if (!closed.has(k) && !openKeys.has(k)) continue;
+        const [c, r] = fromKey(k);
+        const [x, y] = center(c, r);
+        const onClosed = closed.has(k);
+        ctx.fillStyle = onClosed ? 'rgba(255,255,255,0.95)' : '#1a1a2e';
+        ctx.fillText(g.toFixed(0), x, y - 0.5);
+        ctx.fillStyle = onClosed ? 'rgba(255,255,255,0.75)' : '#444';
+        ctx.fillText('f' + (g + hCost(c, r)).toFixed(0), x, y + 8);
+      }
+      ctx.textAlign = 'left';
+    }
+
+    // final path
+    if (pathCells && pathCells.length > 1) {
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath();
+      pathCells.forEach((p, i) => { const [x, y] = center(p.col, p.row); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.lineWidth = 5; ctx.strokeStyle = '#111'; ctx.stroke();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+    }
+
+    marker(START, '#27ae60', 'S');
+    marker(GOAL, '#c0392b', 'G');
+  }
+
+  function marker(cell, color, label) {
+    const [x, y] = center(cell.col, cell.row);
+    ctx.beginPath(); ctx.arc(x, y, SIZE * 0.58, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+
+  function updateStats() {
+    const frontier = open.filter((o) => !closed.has(key(o.col, o.row))).length;
+    let txt = `Explored: <strong>${expanded}</strong> &middot; Frontier: <strong>${frontier}</strong>`;
+    if (finished) {
+      if (pathCells) {
+        const cost = pathCells.slice(1).reduce((s, p) => s + costs.get(key(p.col, p.row)), 0);
+        txt += ` &middot; Path: <strong>${pathCells.length - 1}</strong> steps, total cost <strong>${cost.toFixed(1)}</strong>`;
+      } else {
+        txt += ` &middot; <strong style="color:#c0392b;">no path (goal walled off)</strong>`;
+      }
+    }
+    statsEl.innerHTML = txt;
+  }
+
+  // ── Playback ──
+  function tick() {
+    if (!playing) return;
+    step();
+    if (finished) { stopPlay(); return; }
+    timer = setTimeout(tick, 1000 / parseInt(speedEl.value, 10));
+  }
+  function startPlay() {
+    if (finished) reset();
+    playing = true; playBtn.textContent = '⏸ Pause'; tick();
+  }
+  function stopPlay() {
+    playing = false; if (playBtn) playBtn.textContent = '▶ Play';
+    if (timer) { clearTimeout(timer); timer = null; }
+  }
+
+  function heurLabel() {
+    const w = heurWeight();
+    if (w === 0) return 'Dijkstra (h=0)';
+    if (Math.abs(w - 1) < 1e-9) return 'A* (optimal)';
+    if (w < 1) return 'A* · w=' + w.toFixed(2);
+    return 'Greedy · w=' + w.toFixed(2);
+  }
+
+  // ── Wiring ──
+  playBtn.addEventListener('click', () => (playing ? stopPlay() : startPlay()));
+  stepBtn.addEventListener('click', () => { stopPlay(); if (finished) reset(); else step(); });
+  resetBtn.addEventListener('click', reset);
+  scoresChk.addEventListener('change', render);
+  speedEl.addEventListener('input', () => { speedVal.textContent = speedEl.value + '/s'; });
+  heurEl.addEventListener('input', () => { heurVal.textContent = heurLabel(); reset(); });
+  seedEl.addEventListener('input', () => {
+    seedVal.textContent = seedEl.value;
+    walls.clear();
+    costs = makeCosts(parseInt(seedEl.value, 10));
+    reset();
+  });
+
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    let best = null, bestD = Infinity;
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const [x, y] = center(col, row);
+        const d = (x - mx) ** 2 + (y - my) ** 2;
+        if (d < bestD) { bestD = d; best = key(col, row); }
+      }
+    }
+    if (best === null || bestD > (SIZE * 1.1) ** 2) return;
+    if (best === startKey || best === goalKey) return;
+    if (walls.has(best)) walls.delete(best); else walls.add(best);
+    reset();
+  });
+
+  // ── Init ──
+  speedVal.textContent = speedEl.value + '/s';
+  heurVal.textContent = heurLabel();
+  seedVal.textContent = seedEl.value;
+  costs = makeCosts(parseInt(seedEl.value, 10));
+  reset();
 })();
 </script>
 
