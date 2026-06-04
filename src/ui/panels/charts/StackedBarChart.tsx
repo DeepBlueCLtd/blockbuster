@@ -69,6 +69,7 @@ export function StackedBarChart({ coa, maxRiskCost, highlightedCellId, onHoverCe
               onMouseLeave={() => onHoverCell(null)}
               onClick={() => onHoverCell(step.cellId)}
             >
+              <title>{Math.round(step.speedKmh)} km/h</title>
               {segments}
               {isHighlighted ? (
                 <rect x={x - 1} y={0} width={BAR_WIDTH + 2} height={CHART_H}
@@ -114,6 +115,7 @@ export function StackedBarChart({ coa, maxRiskCost, highlightedCellId, onHoverCe
         onMouseLeave={() => onHoverCell(null)}
         onClick={() => onHoverCell(step.cellId)}
       >
+        <title>{Math.round(step.speedKmh)} km/h</title>
         {segments}
         {/* Cell boundary — drawn last so it sits on top of the coloured segments. */}
         <line x1={x} y1={0} x2={x} y2={CHART_H} stroke="white" strokeWidth={3} opacity={0.7} />

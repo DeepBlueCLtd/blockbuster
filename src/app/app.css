@@ -418,6 +418,13 @@ button:hover {
   font-weight: 600;
 }
 
+.coa-window-warn {
+  margin-left: 0.3em;
+  color: #e07000;
+  font-size: 12px;
+  cursor: default;
+}
+
 .coa-meta {
   font-size: 11px;
   color: var(--muted);

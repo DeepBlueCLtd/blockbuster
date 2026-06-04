@@ -14,6 +14,7 @@ export function CoaPanel() {
   const selectCoa = useBlockbusterStore((s) => s.selectCoa);
   const hoveredCellId = useBlockbusterStore((s) => s.hoveredCellId);
   const hoverCell = useBlockbusterStore((s) => s.hoverCell);
+  const waypointWindows = useBlockbusterStore((s) => s.waypointWindows);
 
   const hasPlan = !!plan && plan.coas.length > 0;
   // Charts draw only the risk breakdown (movement cost drives routing but is
@@ -42,7 +43,15 @@ export function CoaPanel() {
             : 'No routes yet. Add at least two waypoints on the Waypoints tab.'}
         </p>
       ) : (
-        plan.coas.map((coa, index) => (
+        plan.coas.map((coa, index) => {
+          const windowViolated = coa.waypointArrivals.some((arrival, wi) => {
+            const win = waypointWindows[wi];
+            if (!win) return false;
+            if (win.earliest !== undefined && arrival < win.earliest) return true;
+            if (win.latest !== undefined && arrival > win.latest) return true;
+            return false;
+          });
+          return (
           <section
             key={coa.id}
             className={coa.id === selectedCoaId ? 'coa coa-selected' : 'coa'}
@@ -50,7 +59,12 @@ export function CoaPanel() {
             onClick={() => selectCoa(coa.id)}
           >
             <header className="coa-head">
-              <span className="coa-title">{coa.label}</span>
+              <span className="coa-title">
+                {coa.label}
+                {windowViolated && (
+                  <span className="coa-window-warn" title="Arrival window not met">⚠</span>
+                )}
+              </span>
               <span className="coa-meta">
                 {coa.totalCost.toFixed(0)} cost · {coa.totalDistanceKm.toFixed(1)} km ·{' '}
                 {coa.path.length} cells
@@ -73,7 +87,8 @@ export function CoaPanel() {
               timeEnd={timeEnd}
             />
           </section>
-        ))
+          );
+        })
       )}
     </div>
   );

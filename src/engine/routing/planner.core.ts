@@ -293,6 +293,7 @@ function aStar(
   blocked: ReadonlySet<CellId>,
   temporal: TemporalContext,
   legStartDistKm: number,
+  legStartTimeMin = 0,
 ): CellId[] | null {
   if (src === dst) return [src];
   const goalCenter = graph.centerOf(dst);
@@ -307,6 +308,9 @@ function aStar(
 
   const gScore = new Map<CellId, number>([[src, 0]]);
   const travelDistKm = new Map<CellId, number>([[src, 0]]);
+  // Cumulative travel time within this leg (seconds within this A* call).
+  // Distinct from distance because dynamic mode may use different speeds per cell.
+  const travelTimeMin = new Map<CellId, number>([[src, 0]]);
   const prev = new Map<CellId, CellId>();
   const closed = new Set<CellId>();
   const open = new MinHeap();
@@ -324,6 +328,7 @@ function aStar(
     if (!fromCenter) continue;
     const gCurrent = gScore.get(current) ?? Infinity;
     const distCurrent = travelDistKm.get(current) ?? 0;
+    const curTimeMin = travelTimeMin.get(current) ?? 0;
 
     for (const next of graph.neighbors(current)) {
       if (closed.has(next)) continue;
@@ -338,24 +343,31 @@ function aStar(
 
       let edge: number;
       let arrivalMin: number;
+      let newTimeMin: number;
 
       if (isDynamic) {
         // Try SPEED_MIN and SPEED_MAX; pick whichever gives lower entry cost.
+        // Use cumulative time (not distance/speed) for accurate arrival estimate.
         let bestBase = Infinity;
         let bestArrival = 0;
+        let bestSpeed = SPEED_MIN_KMH;
         for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
-          const arr = temporal.journeyParams.startTime + (totalDistKm / s) * 60;
+          const legTime = (legDistKm / s) * 60;
+          const arr = temporal.journeyParams.startTime + legStartTimeMin + curTimeMin + legTime;
           const prof = applyAllModifiers(graph.riskAt(next), toCenter, arr, s, temporal);
           const base = movementCost(legDistKm, params) + cellRiskCost(prof, params);
           if (base < bestBase) {
             bestBase = base;
             bestArrival = arr;
+            bestSpeed = s;
           }
         }
         arrivalMin = bestArrival;
+        newTimeMin = curTimeMin + (legDistKm / bestSpeed) * 60;
         edge = uses > 0 ? bestBase * (1 + DIVERSITY_PENALTY * uses) : bestBase;
       } else {
         arrivalMin = temporal.journeyParams.startTime + (totalDistKm / fixedSpeed) * 60;
+        newTimeMin = curTimeMin + (legDistKm / fixedSpeed) * 60;
         const profile = applyAllModifiers(graph.riskAt(next), toCenter, arrivalMin, fixedSpeed, temporal);
         const base = movementCost(legDistKm, params) + cellRiskCost(profile, params);
         edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
@@ -370,6 +382,7 @@ function aStar(
       if (tentative < (gScore.get(next) ?? Infinity)) {
         gScore.set(next, tentative);
         travelDistKm.set(next, newDistKm);
+        travelTimeMin.set(next, newTimeMin);
         prev.set(next, current);
         open.push(tentative + heuristic(next), next);
       }
@@ -399,14 +412,15 @@ function leg(
   blocked: ReadonlySet<CellId>,
   temporal: TemporalContext,
   legStartDistKm: number,
+  legStartTimeMin = 0,
 ): CellId[] {
   const withBlocks =
     blocked.size > 0
-      ? aStar(graph, a, b, params, usage, blocked, temporal, legStartDistKm)
+      ? aStar(graph, a, b, params, usage, blocked, temporal, legStartDistKm, legStartTimeMin)
       : null;
   return (
     withBlocks ??
-    aStar(graph, a, b, params, usage, NO_BLOCKS, temporal, legStartDistKm) ?? [a, b]
+    aStar(graph, a, b, params, usage, NO_BLOCKS, temporal, legStartDistKm, legStartTimeMin) ?? [a, b]
   );
 }
 
@@ -432,6 +446,14 @@ function pathThroughSequence(
 ): CellId[] {
   const full: CellId[] = [];
   let cumulativeDistKm = 0;
+  let cumulativeTimeMin = 0;
+  // Estimate per-segment speed for time tracking across legs.
+  // Dynamic mode uses the midpoint of the speed range as a planning estimate;
+  // the actual per-cell speeds are resolved during buildCoa.
+  const speedEstKmh =
+    temporal.journeyParams.speedMode === 'dynamic'
+      ? (SPEED_MIN_KMH + SPEED_MAX_KMH) / 2
+      : temporal.journeyParams.fixedSpeedKmh;
   for (let i = 0; i < sequence.length - 1; i++) {
     const seg = leg(
       graph,
@@ -442,9 +464,12 @@ function pathThroughSequence(
       blocked,
       temporal,
       cumulativeDistKm,
+      cumulativeTimeMin,
     );
     full.push(...(i === 0 ? seg : seg.slice(1)));
-    cumulativeDistKm += pathDistanceKm(seg, graph);
+    const segDistKm = pathDistanceKm(seg, graph);
+    cumulativeDistKm += segDistKm;
+    cumulativeTimeMin += (segDistKm / speedEstKmh) * 60;
   }
   return full;
 }
@@ -463,6 +488,9 @@ function buildCoa(
   const riskTotals = zeroRisk();
   let totalCost = 0;
   let totalDistanceKm = 0;
+  // Track actual cumulative travel time so arrival times are correct even when
+  // different cells use different speeds (dynamic mode).
+  let cumulativeTimeMin = 0;
   const isDynamic = temporal.journeyParams.speedMode === 'dynamic';
   const fixedSpeed = temporal.journeyParams.fixedSpeedKmh;
   const waypointArrivals: number[] = new Array(temporal.waypoints.length).fill(
@@ -483,13 +511,15 @@ function buildCoa(
     }
 
     // Dynamic: pick the speed that minimises entry cost at this step.
+    // Use cumulative time (not total distance / speed) for accurate arrival estimate.
     const cellCenter = graph.centerOf(cellId);
     let chosenSpeed: number;
     if (isDynamic) {
       let bestCost = Infinity;
       chosenSpeed = SPEED_MIN_KMH;
       for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
-        const arr = temporal.journeyParams.startTime + (totalDistanceKm / s) * 60;
+        const legTime = i > 0 && legKm > 0 ? (legKm / s) * 60 : 0;
+        const arr = temporal.journeyParams.startTime + cumulativeTimeMin + legTime;
         const prof = applyAllModifiers(graph.riskAt(cellId), cellCenter, arr, s, temporal);
         const cost = move + cellRiskCost(prof, params);
         if (cost < bestCost) {
@@ -501,7 +531,8 @@ function buildCoa(
       chosenSpeed = fixedSpeed;
     }
 
-    const arrivalMin = temporal.journeyParams.startTime + (totalDistanceKm / chosenSpeed) * 60;
+    if (i > 0 && legKm > 0) cumulativeTimeMin += (legKm / chosenSpeed) * 60;
+    const arrivalMin = temporal.journeyParams.startTime + cumulativeTimeMin;
 
     // Apply same modifier chain as A* for consistency.
     const profile = applyAllModifiers(graph.riskAt(cellId), cellCenter, arrivalMin, chosenSpeed, temporal);
