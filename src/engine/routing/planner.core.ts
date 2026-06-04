@@ -553,6 +553,28 @@ function buildCoa(
 
   const lastArrival = steps[steps.length - 1]?.arrivalTimeMinutes ?? temporal.journeyParams.startTime;
 
+  // Auto-shift departure time to satisfy violated 'earliest' arrival constraints.
+  // If any waypoint window requires arriving later than the route naturally does,
+  // push the whole schedule forward so it arrives exactly at the constraint.
+  // Re-runs buildCoa with the adjusted startTime so temporal modifiers (day/night,
+  // moving zones) are evaluated at the correct times. The path is kept unchanged.
+  let startShift = 0;
+  for (let wi = 0; wi < temporal.waypointWindows.length; wi++) {
+    const win = temporal.waypointWindows[wi];
+    if (!win?.earliest) continue;
+    const arrival = waypointArrivals[wi] ?? temporal.journeyParams.startTime;
+    if (arrival < win.earliest) {
+      startShift = Math.max(startShift, win.earliest - arrival);
+    }
+  }
+  if (startShift > 0) {
+    const shiftedTemporal: TemporalContext = {
+      ...temporal,
+      journeyParams: { ...temporal.journeyParams, startTime: temporal.journeyParams.startTime + startShift },
+    };
+    return buildCoa(id, label, path, graph, params, shiftedTemporal);
+  }
+
   return {
     id,
     label,
