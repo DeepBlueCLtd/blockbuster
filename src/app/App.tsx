@@ -20,9 +20,12 @@ export function App() {
   const activeTab = useBlockbusterStore((s) => s.activeTab);
   const setActiveTab = useBlockbusterStore((s) => s.setActiveTab);
 
-  // Build the initial world once on mount.
+  // Defer the initial world build so React can paint the app shell first.
+  // Without this the synchronous map-gen / grid / risk scoring blocks the
+  // main thread before the first frame, making the app appear to freeze.
   useEffect(() => {
-    regenerate();
+    const id = setTimeout(() => regenerate(), 0);
+    return () => clearTimeout(id);
   }, [regenerate]);
 
   return (

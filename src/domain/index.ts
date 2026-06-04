@@ -15,5 +15,6 @@ export * from './geometry';
 export * from './risk';
 export * from './zone';
 export * from './cost';
+export * from './journey';
 export * from './routing';
 export * from './ports';

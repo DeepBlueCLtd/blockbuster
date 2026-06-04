@@ -19,7 +19,9 @@ import type {
 import {
   DEFAULT_APPETITE,
   DEFAULT_COST_PARAMS,
+  DEFAULT_DAY_NIGHT,
   DEFAULT_EXTENT,
+  DEFAULT_JOURNEY_PARAMS,
   effectiveProfile,
   toHexGridDto,
   worldDistance,
@@ -86,6 +88,10 @@ export const fixtureRequest: RouteRequest = {
   params: DEFAULT_COST_PARAMS,
   waypoints: fixtureWaypoints,
   coaCount: 3,
+  journeyParams: DEFAULT_JOURNEY_PARAMS,
+  dayNight: DEFAULT_DAY_NIGHT,
+  timeVaryingZones: [],
+  waypointWindows: [null, null],
 };
 
 export const fixturePlan: RoutePlan = planRoutesSync(fixtureRequest);

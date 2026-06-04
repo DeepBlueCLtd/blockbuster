@@ -8,34 +8,60 @@ import type {
   RiskType,
   RiskZone,
   RouteRequest,
+  TimeWindow,
+  WorldPoint,
 } from '@domain';
 import {
+  applyTemporalModifiers,
   applyZoneOffsets,
   cellRiskCost,
   clamp01,
   clampZoneOffset,
+  coverageFraction,
   DEFAULT_COST_PARAMS,
+  DEFAULT_DAY_NIGHT,
   DEFAULT_EXTENT,
   DEFAULT_HEX_SIZE_KM,
+  DEFAULT_JOURNEY_PARAMS,
   effectiveProfile,
+  isZoneActiveAt,
+  ringAt,
   RISK_TYPES,
+  speedModifiedProfile,
   toHexGridDto,
   zoneOffsetsForCell,
 } from '@domain';
 import { createEngine } from '@/engine';
 import type { BlockbusterState } from './types';
 
-/** Per-cell, area-weighted zone offsets. Recomputed when zones or the grid change. */
+/**
+ * Per-cell, area-weighted offsets for always-active, static zones only.
+ * Zones with time bounds or motion are handled per A* step in the worker.
+ */
 function computeZoneContribution(
   grid: HexGrid | null,
   zones: RiskZone[],
 ): Map<CellId, Partial<Record<RiskType, number>>> {
+  const alwaysActive = zones.filter(
+    (z) => z.startTime === undefined && z.endTime === undefined && !z.motion,
+  );
   const out = new Map<CellId, Partial<Record<RiskType, number>>>();
-  if (!grid || zones.length === 0) return out;
+  if (!grid || alwaysActive.length === 0) return out;
   for (const cell of grid.cells) {
-    const offsets = zoneOffsetsForCell(cell.vertices, zones);
+    const offsets = zoneOffsetsForCell(cell.vertices, alwaysActive);
     if (Object.keys(offsets).length > 0) out.set(cell.id, offsets);
   }
+  return out;
+}
+
+/** Keep waypointWindows array in sync with waypoints length, preserving existing values. */
+function syncWindows(
+  windows: (TimeWindow | null)[],
+  newLength: number,
+): (TimeWindow | null)[] {
+  if (windows.length === newLength) return windows;
+  const out = windows.slice(0, newLength);
+  while (out.length < newLength) out.push(null);
   return out;
 }
 
@@ -79,6 +105,10 @@ export function createBlockbusterStore(engine: Engine) {
       optimiseOrder: false,
       zones: [],
       zoneRiskType: RISK_TYPES[0],
+      journeyParams: DEFAULT_JOURNEY_PARAMS,
+      dayNight: DEFAULT_DAY_NIGHT,
+      waypointWindows: [],
+      displayTime: DEFAULT_JOURNEY_PARAMS.startTime,
 
       plan: null,
       planning: false,
@@ -186,11 +216,11 @@ export function createBlockbusterStore(engine: Engine) {
       toggleWaypoint: (cellId) => {
         const s = get();
         const exists = s.waypoints.includes(cellId);
-        // Adding appends to the end of the sequence; the analyst reorders from there.
         const waypoints = exists
           ? s.waypoints.filter((id) => id !== cellId)
           : [...s.waypoints, cellId];
-        set({ waypoints });
+        const waypointWindows = syncWindows(s.waypointWindows, waypoints.length);
+        set({ waypoints, waypointWindows });
         if (waypoints.length >= 2) void get().replan();
         else set({ plan: null });
       },
@@ -203,14 +233,17 @@ export function createBlockbusterStore(engine: Engine) {
         const [moved] = waypoints.splice(from, 1);
         if (moved === undefined) return;
         waypoints.splice(to, 0, moved);
-        set({ waypoints });
+        // Mirror the same splice on windows so they stay aligned.
+        const waypointWindows = s.waypointWindows.slice();
+        const [movedWindow] = waypointWindows.splice(from, 1);
+        waypointWindows.splice(to, 0, movedWindow ?? null);
+        set({ waypoints, waypointWindows });
         if (waypoints.length >= 2) void get().replan();
       },
 
       relocateWaypoint: (index, cellId) => {
         const s = get();
         if (index < 0 || index >= s.waypoints.length) return;
-        // Ignore no-ops, unknown cells, and drops onto a cell that's already a waypoint.
         if (s.waypoints[index] === cellId) return;
         if (!s.grid?.get(cellId) || s.waypoints.includes(cellId)) return;
         const waypoints = s.waypoints.slice();
@@ -220,7 +253,7 @@ export function createBlockbusterStore(engine: Engine) {
       },
 
       clearWaypoints: () => {
-        set({ waypoints: [], plan: null, selectedCoaId: null });
+        set({ waypoints: [], waypointWindows: [], plan: null, selectedCoaId: null });
       },
 
       setOptimiseOrder: (optimise) => {
@@ -238,6 +271,11 @@ export function createBlockbusterStore(engine: Engine) {
         const risk: Record<CellId, RiskProfile> = {};
         for (const [id, state] of s.riskStates)
           risk[id] = applyZoneOffsets(effectiveProfile(state), s.zoneContribution.get(id));
+        // Zones with time bounds or motion are sent raw to the worker for per-step evaluation.
+        const timeVaryingZones = s.zones.filter(
+          (z) => z.startTime !== undefined || z.endTime !== undefined || z.motion !== undefined,
+        );
+        const waypointWindows = syncWindows(s.waypointWindows, s.waypoints.length);
         const request: RouteRequest = {
           grid: toHexGridDto(s.grid),
           risk,
@@ -245,6 +283,10 @@ export function createBlockbusterStore(engine: Engine) {
           waypoints: s.waypoints,
           coaCount: 3,
           optimiseOrder: s.optimiseOrder,
+          journeyParams: s.journeyParams,
+          dayNight: s.dayNight,
+          timeVaryingZones,
+          waypointWindows,
         };
         try {
           const plan = await engine.routePlanner.plan(request);
@@ -292,6 +334,29 @@ export function createBlockbusterStore(engine: Engine) {
         ),
       setShowRoutes: (show) => set({ showRoutes: show }),
 
+      setJourneyParams: (patch) => {
+        set({ journeyParams: { ...get().journeyParams, ...patch } });
+        scheduleReplan();
+      },
+
+      setDayNight: (config) => {
+        set({ dayNight: config });
+        scheduleReplan();
+      },
+
+      setWaypointWindow: (index, window) => {
+        const s = get();
+        const waypointWindows = syncWindows(s.waypointWindows, s.waypoints.length).slice();
+        waypointWindows[index] = window;
+        set({ waypointWindows });
+        scheduleReplan();
+      },
+
+      setDisplayTime: (minutes) => {
+        set({ displayTime: minutes });
+        // No replan — display time is for visualization only.
+      },
+
       addZone: (zone) => {
         const s = get();
         const zones = [...s.zones, zone];
@@ -305,11 +370,30 @@ export function createBlockbusterStore(engine: Engine) {
 
       updateZone: (id, patch) => {
         const s = get();
-        const next =
-          patch.offset === undefined ? patch : { ...patch, offset: clampZoneOffset(patch.offset) };
-        const zones = s.zones.map((z) => (z.id === id ? { ...z, ...next } : z));
-        // Only the channel or offset changes a cell's score (a rename does not).
-        const affectsScore = next.risk !== undefined || next.offset !== undefined;
+        const zones = s.zones.map((z) => {
+          if (z.id !== id) return z;
+          const updated = { ...z };
+          if (patch.name !== undefined) updated.name = patch.name;
+          if (patch.risk !== undefined) updated.risk = patch.risk;
+          if (patch.offset !== undefined) updated.offset = clampZoneOffset(patch.offset);
+          // null means "remove the field"; a number sets it.
+          if (patch.startTime === null) {
+            delete updated.startTime;
+          } else if (patch.startTime !== undefined) {
+            updated.startTime = patch.startTime;
+          }
+          if (patch.endTime === null) {
+            delete updated.endTime;
+          } else if (patch.endTime !== undefined) {
+            updated.endTime = patch.endTime;
+          }
+          return updated;
+        });
+        const affectsScore =
+          patch.risk !== undefined ||
+          patch.offset !== undefined ||
+          patch.startTime !== undefined ||
+          patch.endTime !== undefined;
         set(
           affectsScore
             ? { zones, zoneContribution: computeZoneContribution(s.grid, zones) }
@@ -376,4 +460,48 @@ export function selectCellCost(state: BlockbusterState, cellId: CellId): number 
   if (!risk) return 0;
   const eff = applyZoneOffsets(effectiveProfile(risk), state.zoneContribution.get(cellId));
   return cellRiskCost(eff, state.costParams);
+}
+
+/**
+ * Time-aware effective risk profile for a cell at `state.displayTime`.
+ * Applies: always-active zone offsets → active time-varying zone offsets
+ * (using area-weighted coverage fraction via `ringAt`) → day/night modifiers
+ * → speed modifiers. Used by overlay layers and the inspector.
+ */
+export function selectDisplayProfile(
+  state: Pick<
+    BlockbusterState,
+    | 'riskStates'
+    | 'zoneContribution'
+    | 'zones'
+    | 'displayTime'
+    | 'dayNight'
+    | 'journeyParams'
+    | 'extent'
+    | 'hexSize'
+  >,
+  cellId: CellId,
+  cellVertices: readonly WorldPoint[],
+): RiskProfile | null {
+  const riskState = state.riskStates.get(cellId);
+  if (!riskState) return null;
+  let profile = applyZoneOffsets(effectiveProfile(riskState), state.zoneContribution.get(cellId));
+  const timeVaryingActive = state.zones.filter(
+    (z) =>
+      (z.startTime !== undefined || z.endTime !== undefined || z.motion !== undefined) &&
+      z.enabled &&
+      isZoneActiveAt(z, state.displayTime),
+  );
+  if (timeVaryingActive.length > 0) {
+    const offsets: Partial<Record<RiskType, number>> = {};
+    for (const zone of timeVaryingActive) {
+      const ring = ringAt(zone, state.displayTime, state.extent, state.hexSize);
+      const coverage = coverageFraction(cellVertices, ring);
+      if (coverage > 0) offsets[zone.risk] = (offsets[zone.risk] ?? 0) + coverage * zone.offset;
+    }
+    profile = applyZoneOffsets(profile, offsets);
+  }
+  profile = applyTemporalModifiers(profile, state.displayTime, state.dayNight);
+  profile = speedModifiedProfile(profile, state.journeyParams.fixedSpeedKmh);
+  return profile;
 }

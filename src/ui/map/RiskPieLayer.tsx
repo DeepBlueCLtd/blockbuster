@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Pane, Polygon } from 'react-leaflet';
-import { applyZoneOffsets, effectiveProfile, riskCostBreakdown } from '@domain';
-import { useBlockbusterStore } from '@/state/store';
+import { riskCostBreakdown } from '@domain';
+import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { RISK_COLORS } from '@/ui/theme';
 import { worldRingToLatLng } from './projection';
 import { cellInradius, PIE_RADIUS_FRACTION, riskPieSlices } from './pie';
@@ -18,14 +18,20 @@ export function RiskPieLayer() {
   const showRiskPies = useBlockbusterStore((s) => s.showRiskPies);
   const riskStates = useBlockbusterStore((s) => s.riskStates);
   const zoneContribution = useBlockbusterStore((s) => s.zoneContribution);
+  const zones = useBlockbusterStore((s) => s.zones);
+  const displayTime = useBlockbusterStore((s) => s.displayTime);
+  const dayNight = useBlockbusterStore((s) => s.dayNight);
+  const journeyParams = useBlockbusterStore((s) => s.journeyParams);
   const costParams = useBlockbusterStore((s) => s.costParams);
+  const extent = useBlockbusterStore((s) => s.extent);
+  const hexSize = useBlockbusterStore((s) => s.hexSize);
 
   const pies = useMemo(() => {
     if (!grid || !showRiskPies) return [];
+    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, extent, hexSize };
     return grid.cells.flatMap((cell) => {
-      const state = riskStates.get(cell.id);
-      if (!state) return [];
-      const eff = applyZoneOffsets(effectiveProfile(state), zoneContribution.get(cell.id));
+      const eff = selectDisplayProfile(profileCtx, cell.id, cell.vertices);
+      if (!eff) return [];
       const breakdown = riskCostBreakdown(eff, costParams);
       const radius = cellInradius(cell.center, cell.vertices) * PIE_RADIUS_FRACTION;
       return riskPieSlices(cell.center, radius, breakdown).map((slice) => ({
@@ -34,7 +40,7 @@ export function RiskPieLayer() {
         positions: worldRingToLatLng(slice.ring),
       }));
     });
-  }, [grid, showRiskPies, riskStates, zoneContribution, costParams]);
+  }, [grid, showRiskPies, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams, extent, hexSize]);
 
   if (pies.length === 0) return null;
 

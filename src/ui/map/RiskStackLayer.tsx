@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Pane, Polygon } from 'react-leaflet';
-import { applyZoneOffsets, effectiveProfile, riskCostBreakdown, RISK_TYPES } from '@domain';
-import { useBlockbusterStore } from '@/state/store';
+import { riskCostBreakdown, RISK_TYPES } from '@domain';
+import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { RISK_COLORS } from '@/ui/theme';
 import { worldRingToLatLng } from './projection';
 import { BAR_RADIUS_FRACTION, cellInradius, riskStackRects } from './pie';
@@ -20,10 +20,18 @@ export function RiskStackLayer() {
   const showRiskStacks = useBlockbusterStore((s) => s.showRiskStacks);
   const riskStates = useBlockbusterStore((s) => s.riskStates);
   const zoneContribution = useBlockbusterStore((s) => s.zoneContribution);
+  const zones = useBlockbusterStore((s) => s.zones);
+  const displayTime = useBlockbusterStore((s) => s.displayTime);
+  const dayNight = useBlockbusterStore((s) => s.dayNight);
+  const journeyParams = useBlockbusterStore((s) => s.journeyParams);
   const costParams = useBlockbusterStore((s) => s.costParams);
+  const extent = useBlockbusterStore((s) => s.extent);
+  const hexSize = useBlockbusterStore((s) => s.hexSize);
 
   const stacks = useMemo(() => {
     if (!grid || !showRiskStacks) return [];
+
+    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, extent, hexSize };
 
     // First pass: compute every cell's breakdown and find the global max total
     // so stack heights are comparable across the entire map.
@@ -36,9 +44,8 @@ export function RiskStackLayer() {
     let maxTotal = 0;
 
     for (const cell of grid.cells) {
-      const state = riskStates.get(cell.id);
-      if (!state) continue;
-      const eff = applyZoneOffsets(effectiveProfile(state), zoneContribution.get(cell.id));
+      const eff = selectDisplayProfile(profileCtx, cell.id, cell.vertices);
+      if (!eff) continue;
       const breakdown = riskCostBreakdown(eff, costParams);
       let total = 0;
       for (const risk of RISK_TYPES) total += Math.max(0, breakdown[risk]);
@@ -60,7 +67,7 @@ export function RiskStackLayer() {
         positions: worldRingToLatLng(rect.ring),
       })),
     );
-  }, [grid, showRiskStacks, riskStates, zoneContribution, costParams]);
+  }, [grid, showRiskStacks, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams, extent, hexSize]);
 
   if (stacks.length === 0) return null;
 

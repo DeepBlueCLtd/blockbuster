@@ -521,10 +521,22 @@ function buildCoa(id: string, label: string, path: CellId[], graph: Graph, param
       stepCost += perRisk[r];
     }
     totalCost += stepCost;
-    steps.push({ cellId, perRisk, movementCost: move, stepCost });
+    steps.push({ cellId, perRisk, movementCost: move, stepCost, arrivalTimeMinutes: 0, speedKmh: 15 });
   });
 
-  return { id, label, path, steps, totalCost, totalDistanceKm, riskTotals };
+  return {
+    id,
+    label,
+    path,
+    steps,
+    totalCost,
+    totalDistanceKm,
+    riskTotals,
+    departureTimeMinutes: 0,
+    arrivalTimeMinutes: 0,
+    waypointArrivals: [],
+    speedKmh: 15,
+  };
 }
 
 /** Synchronous core of the mock planner (used by fixtures and tests). */
