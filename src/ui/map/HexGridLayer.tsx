@@ -23,6 +23,8 @@ export function HexGridLayer() {
   const dayNight = useBlockbusterStore((s) => s.dayNight);
   const journeyParams = useBlockbusterStore((s) => s.journeyParams);
   const zones = useBlockbusterStore((s) => s.zones);
+  const extent = useBlockbusterStore((s) => s.extent);
+  const hexSize = useBlockbusterStore((s) => s.hexSize);
 
   const maxCost = useMemo(() => {
     let max = 1e-6;
@@ -42,7 +44,7 @@ export function HexGridLayer() {
     <Pane name="hexgrid" style={{ zIndex: 410 }}>
       {grid.cells.map((cell) => {
         const eff = selectDisplayProfile(
-          { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams },
+          { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, extent, hexSize },
           cell.id,
           cell.vertices,
         );

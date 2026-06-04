@@ -3,19 +3,7 @@ import type { CellId, HexGridDto } from './hex';
 import type { RiskProfile, RiskType } from './risk';
 import type { CostParams } from './cost';
 import type { JourneyParams, DayNightConfig, TimeWindow } from './journey';
-
-/**
- * Pre-computed contribution of a single temporal zone for one cell.
- * The routing worker uses these (alongside arrival time) to apply time-bounded
- * zone effects per step — structured-clone safe, no closures.
- */
-export interface TemporalZoneCellEntry {
-  risk: RiskType;
-  /** Pre-computed: coverageFraction × zone.offset (signed). */
-  contribution: number;
-  startTime?: number; // minutes from midnight
-  endTime?: number; // minutes from midnight
-}
+import type { RiskZone } from './zone';
 
 /**
  * Everything the routing engine needs, in structured-clone-friendly form so it
@@ -51,11 +39,12 @@ export interface RouteRequest {
   /** Whether day/night risk modifiers are active. Defaults to DEFAULT_DAY_NIGHT. */
   dayNight?: DayNightConfig;
   /**
-   * Pre-computed per-cell temporal zone contributions (coverage × offset per
-   * zone–time-window). Only cells with non-zero temporal zone coverage appear.
-   * Applied per step inside the worker at the cell's arrival time.
+   * Zones with time bounds or motion descriptors. Applied per step inside the
+   * worker at the cell's arrival time. Always structured-clone-safe plain data.
+   * Zones without `startTime`/`endTime`/`motion` are baked into `risk` before
+   * sending and should not appear here.
    */
-  temporalZoneCells?: Record<CellId, TemporalZoneCellEntry[]>;
+  timeVaryingZones?: RiskZone[];
   /**
    * Optional earliest/latest arrival time per waypoint (parallel to `waypoints`).
    * Violations incur a soft cost penalty rather than hard blocking.

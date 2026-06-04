@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RISK_LABELS, RISK_TYPES, ZONE_OFFSET_MAX, ZONE_OFFSET_MIN } from '@domain';
-import type { RiskZone, RiskType, WorldExtent, WorldPoint } from '@domain';
+import type { RiskType } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import type { DrawMode } from '@/state/types';
 import { formatTime } from '@/ui/utils/time';
@@ -14,68 +14,6 @@ const TOOLS: ReadonlyArray<{ mode: Exclude<DrawMode, null>; label: string }> = [
 /** Format a signed offset for display, e.g. +0.30 / -0.15. */
 function fmtOffset(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
-}
-
-/** Number of discrete position slices used to simulate storm movement. */
-const STORM_STEPS = 12;
-
-/** 4-point parallelogram ring centred at `cx`, spanning the domain height (open ring). */
-function stormStripRing(
-  cx: number,
-  extent: WorldExtent,
-  hexSizeKm: number,
-  bandCells: number,
-  slantLeft: boolean,
-): WorldPoint[] {
-  const { height } = extent;
-  const halfW = (bandCells * hexSizeKm) / 2;
-  const drift = height * Math.tan((30 * Math.PI) / 180) * (slantLeft ? -1 : 1);
-  const margin = hexSizeKm;
-  return [
-    { x: cx - halfW, y: -margin },
-    { x: cx + halfW, y: -margin },
-    { x: cx + halfW + drift, y: height + margin },
-    { x: cx - halfW + drift, y: height + margin },
-  ];
-}
-
-/**
- * Build N zones that simulate a storm band sweeping east→west across the domain.
- * Each zone covers one time slice and one horizontal position; together they give
- * the illusion of movement when the time slider is dragged.
- */
-function generateMovingStorm(
-  extent: WorldExtent,
-  hexSizeKm: number,
-  intensity: number,
-  slantLeft: boolean,
-  startTime: number,
-  endTime: number,
-): Omit<RiskZone, 'id'>[] {
-  const { width } = extent;
-  const bandCells = 5;
-  const N = STORM_STEPS;
-  // Total duration in minutes, handling midnight wrap.
-  const D = endTime >= startTime ? endTime - startTime : 1440 - startTime + endTime;
-  const stepDur = D / N;
-
-  return Array.from({ length: N }, (_, i) => {
-    // Centre sweeps from near east edge (i=0) to near west edge (i=N-1).
-    const cx = width * (N - 0.5 - i) / N;
-    const ring = stormStripRing(cx, extent, hexSizeKm, bandCells, slantLeft);
-    const rawStart = startTime + i * stepDur;
-    const rawEnd = startTime + (i + 1) * stepDur;
-    return {
-      name: `Storm ${String(i + 1).padStart(2, '0')}/${N}`,
-      risk: 'cold' as RiskType,
-      kind: 'polygon' as const,
-      ring,
-      offset: intensity,
-      enabled: true,
-      startTime: Math.round(rawStart) % 1440,
-      endTime: Math.round(rawEnd) % 1440,
-    };
-  });
 }
 
 /**
@@ -96,7 +34,6 @@ export function ExtraRiskPanel() {
   const toggleZoneEnabled = useBlockbusterStore((s) => s.toggleZoneEnabled);
   const addZone = useBlockbusterStore((s) => s.addZone);
   const extent = useBlockbusterStore((s) => s.extent);
-  const hexSize = useBlockbusterStore((s) => s.hexSize);
 
   const [showStorm, setShowStorm] = useState(false);
   const [stormIntensity, setStormIntensity] = useState(0.3);
@@ -350,15 +287,24 @@ export function ExtraRiskPanel() {
             <button
               type="button"
               onClick={() => {
-                const zones = generateMovingStorm(
-                  extent,
-                  hexSize,
-                  stormIntensity,
-                  stormSlantLeft,
-                  stormStart,
-                  stormEnd,
-                );
-                zones.forEach((z) => addZone({ id: crypto.randomUUID(), ...z }));
+                addZone({
+                  id: crypto.randomUUID(),
+                  name: 'Storm band',
+                  risk: 'cold' as RiskType,
+                  kind: 'polygon',
+                  ring: [],
+                  offset: stormIntensity,
+                  enabled: true,
+                  startTime: stormStart,
+                  endTime: stormEnd,
+                  motion: {
+                    type: 'linear-sweep',
+                    fromX: extent.width,
+                    toX: 0,
+                    bandCells: 5,
+                    slantLeft: stormSlantLeft,
+                  },
+                });
                 setShowStorm(false);
               }}
             >

@@ -25,11 +25,13 @@ export function RiskStackLayer() {
   const dayNight = useBlockbusterStore((s) => s.dayNight);
   const journeyParams = useBlockbusterStore((s) => s.journeyParams);
   const costParams = useBlockbusterStore((s) => s.costParams);
+  const extent = useBlockbusterStore((s) => s.extent);
+  const hexSize = useBlockbusterStore((s) => s.hexSize);
 
   const stacks = useMemo(() => {
     if (!grid || !showRiskStacks) return [];
 
-    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams };
+    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, extent, hexSize };
 
     // First pass: compute every cell's breakdown and find the global max total
     // so stack heights are comparable across the entire map.
@@ -65,7 +67,7 @@ export function RiskStackLayer() {
         positions: worldRingToLatLng(rect.ring),
       })),
     );
-  }, [grid, showRiskStacks, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams]);
+  }, [grid, showRiskStacks, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams, extent, hexSize]);
 
   if (stacks.length === 0) return null;
 

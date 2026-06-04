@@ -8,10 +8,11 @@ import type {
   JourneyParams,
   RiskProfile,
   RiskType,
+  RiskZone,
   RoutePlan,
   RouteRequest,
-  TemporalZoneCellEntry,
   TimeWindow,
+  WorldExtent,
   WorldPoint,
 } from '@domain';
 import {
@@ -20,8 +21,10 @@ import {
   cellRiskCost,
   DEFAULT_DAY_NIGHT,
   DEFAULT_JOURNEY_PARAMS,
-  isTimeWindowActive,
+  isPointInPolygon,
+  isZoneActiveAt,
   movementCost,
+  ringAt,
   RISK_TYPES,
   riskCostBreakdown,
   SPEED_MAX_KMH,
@@ -196,7 +199,12 @@ function precedes(a: HeapNode, b: HeapNode): boolean {
 interface TemporalContext {
   journeyParams: JourneyParams;
   dayNight: DayNightConfig;
-  temporalZoneCells: Record<CellId, TemporalZoneCellEntry[]>;
+  /** Zones with time bounds or motion; processed per A* step using cell centre + arrival time. */
+  timeVaryingZones: RiskZone[];
+  /** Domain extent, needed to compute dynamic zone rings. */
+  extent: WorldExtent;
+  /** Cell circumradius (km), needed to scale dynamic zone band widths. */
+  hexSizeKm: number;
   waypointWindows: (TimeWindow | null)[];
   waypoints: readonly CellId[];
 }
@@ -205,40 +213,48 @@ interface TemporalContext {
 const EMPTY_TEMPORAL: TemporalContext = {
   journeyParams: { startTime: 0, speedMode: 'fixed', fixedSpeedKmh: 15 },
   dayNight: { enabled: false },
-  temporalZoneCells: {},
+  timeVaryingZones: [],
+  extent: { width: 0, height: 0 },
+  hexSizeKm: 1,
   waypointWindows: [],
   waypoints: [],
 };
 
-/** Apply temporal zone offsets to a profile based on arrival time. */
-function applyTemporalZoneCells(
+/**
+ * Apply time-varying zone offsets to a profile. For each zone active at
+ * `arrivalTimeMin`, computes the zone's ring (static or dynamic) and applies the
+ * offset if the cell centre lies inside. Uses a centre-point test rather than
+ * area-weighted coverage because cell vertices are not in the routing DTO.
+ */
+function applyTimeVaryingZones(
   profile: RiskProfile,
-  cellId: CellId,
+  cellCenter: WorldPoint | undefined,
   arrivalTimeMin: number,
-  temporalZoneCells: Record<CellId, TemporalZoneCellEntry[]>,
+  temporal: TemporalContext,
 ): RiskProfile {
-  const entries = temporalZoneCells[cellId];
-  if (!entries || entries.length === 0) return profile;
+  if (temporal.timeVaryingZones.length === 0 || !cellCenter) return profile;
   const offsets: Partial<Record<RiskType, number>> = {};
-  for (const entry of entries) {
-    if (isTimeWindowActive(entry.startTime, entry.endTime, arrivalTimeMin)) {
-      offsets[entry.risk] = (offsets[entry.risk] ?? 0) + entry.contribution;
-    }
+  for (const zone of temporal.timeVaryingZones) {
+    if (!zone.enabled || zone.offset === 0) continue;
+    if (!isZoneActiveAt(zone, arrivalTimeMin)) continue;
+    const ring = ringAt(zone, arrivalTimeMin, temporal.extent, temporal.hexSizeKm);
+    if (!isPointInPolygon(cellCenter, ring)) continue;
+    offsets[zone.risk] = (offsets[zone.risk] ?? 0) + zone.offset;
   }
   return applyZoneOffsets(profile, offsets);
 }
 
-/** Full modifier chain: speed → day/night → temporal zones. */
+/** Full modifier chain: speed → day/night → time-varying zones. */
 function applyAllModifiers(
   profile: RiskProfile,
-  cellId: CellId,
+  cellCenter: WorldPoint | undefined,
   arrivalTimeMin: number,
   speed: number,
   temporal: TemporalContext,
 ): RiskProfile {
   let p = speedModifiedProfile(profile, speed);
   p = applyTemporalModifiers(p, arrivalTimeMin, temporal.dayNight);
-  p = applyTemporalZoneCells(p, cellId, arrivalTimeMin, temporal.temporalZoneCells);
+  p = applyTimeVaryingZones(p, cellCenter, arrivalTimeMin, temporal);
   return p;
 }
 
@@ -329,7 +345,7 @@ function aStar(
         let bestArrival = 0;
         for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
           const arr = temporal.journeyParams.startTime + (totalDistKm / s) * 60;
-          const prof = applyAllModifiers(graph.riskAt(next), next, arr, s, temporal);
+          const prof = applyAllModifiers(graph.riskAt(next), toCenter, arr, s, temporal);
           const base = movementCost(legDistKm, params) + cellRiskCost(prof, params);
           if (base < bestBase) {
             bestBase = base;
@@ -340,7 +356,7 @@ function aStar(
         edge = uses > 0 ? bestBase * (1 + DIVERSITY_PENALTY * uses) : bestBase;
       } else {
         arrivalMin = temporal.journeyParams.startTime + (totalDistKm / fixedSpeed) * 60;
-        const profile = applyAllModifiers(graph.riskAt(next), next, arrivalMin, fixedSpeed, temporal);
+        const profile = applyAllModifiers(graph.riskAt(next), toCenter, arrivalMin, fixedSpeed, temporal);
         const base = movementCost(legDistKm, params) + cellRiskCost(profile, params);
         edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
       }
@@ -467,13 +483,14 @@ function buildCoa(
     }
 
     // Dynamic: pick the speed that minimises entry cost at this step.
+    const cellCenter = graph.centerOf(cellId);
     let chosenSpeed: number;
     if (isDynamic) {
       let bestCost = Infinity;
       chosenSpeed = SPEED_MIN_KMH;
       for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
         const arr = temporal.journeyParams.startTime + (totalDistanceKm / s) * 60;
-        const prof = applyAllModifiers(graph.riskAt(cellId), cellId, arr, s, temporal);
+        const prof = applyAllModifiers(graph.riskAt(cellId), cellCenter, arr, s, temporal);
         const cost = move + cellRiskCost(prof, params);
         if (cost < bestCost) {
           bestCost = cost;
@@ -487,7 +504,7 @@ function buildCoa(
     const arrivalMin = temporal.journeyParams.startTime + (totalDistanceKm / chosenSpeed) * 60;
 
     // Apply same modifier chain as A* for consistency.
-    const profile = applyAllModifiers(graph.riskAt(cellId), cellId, arrivalMin, chosenSpeed, temporal);
+    const profile = applyAllModifiers(graph.riskAt(cellId), cellCenter, arrivalMin, chosenSpeed, temporal);
     const perRisk = riskCostBreakdown(profile, params);
 
     let stepCost = move;
@@ -692,7 +709,9 @@ export function planRoutes(request: RouteRequest): RoutePlan {
   const temporal: TemporalContext = {
     journeyParams: request.journeyParams ?? DEFAULT_JOURNEY_PARAMS,
     dayNight: request.dayNight ?? DEFAULT_DAY_NIGHT,
-    temporalZoneCells: request.temporalZoneCells ?? {},
+    timeVaryingZones: request.timeVaryingZones ?? [],
+    extent: request.grid.extent,
+    hexSizeKm: request.grid.layout.size,
     waypointWindows: request.waypointWindows ?? Array<TimeWindow | null>(request.waypoints.length).fill(null),
     waypoints: request.waypoints,
   };

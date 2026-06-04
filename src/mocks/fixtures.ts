@@ -90,7 +90,7 @@ export const fixtureRequest: RouteRequest = {
   coaCount: 3,
   journeyParams: DEFAULT_JOURNEY_PARAMS,
   dayNight: DEFAULT_DAY_NIGHT,
-  temporalZoneCells: {},
+  timeVaryingZones: [],
   waypointWindows: [null, null],
 };
 

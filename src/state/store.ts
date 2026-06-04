@@ -8,7 +8,6 @@ import type {
   RiskType,
   RiskZone,
   RouteRequest,
-  TemporalZoneCellEntry,
   TimeWindow,
   WorldPoint,
 } from '@domain';
@@ -18,6 +17,7 @@ import {
   cellRiskCost,
   clamp01,
   clampZoneOffset,
+  coverageFraction,
   DEFAULT_COST_PARAMS,
   DEFAULT_DAY_NIGHT,
   DEFAULT_EXTENT,
@@ -25,6 +25,7 @@ import {
   DEFAULT_JOURNEY_PARAMS,
   effectiveProfile,
   isZoneActiveAt,
+  ringAt,
   RISK_TYPES,
   speedModifiedProfile,
   toHexGridDto,
@@ -34,50 +35,21 @@ import { createEngine } from '@/engine';
 import type { BlockbusterState } from './types';
 
 /**
- * Per-cell, area-weighted offsets for always-active zones only.
- * Temporal zones (with startTime/endTime) are handled separately per step.
+ * Per-cell, area-weighted offsets for always-active, static zones only.
+ * Zones with time bounds or motion are handled per A* step in the worker.
  */
 function computeZoneContribution(
   grid: HexGrid | null,
   zones: RiskZone[],
 ): Map<CellId, Partial<Record<RiskType, number>>> {
   const alwaysActive = zones.filter(
-    (z) => z.startTime === undefined && z.endTime === undefined,
+    (z) => z.startTime === undefined && z.endTime === undefined && !z.motion,
   );
   const out = new Map<CellId, Partial<Record<RiskType, number>>>();
   if (!grid || alwaysActive.length === 0) return out;
   for (const cell of grid.cells) {
     const offsets = zoneOffsetsForCell(cell.vertices, alwaysActive);
     if (Object.keys(offsets).length > 0) out.set(cell.id, offsets);
-  }
-  return out;
-}
-
-/**
- * Pre-compute per-cell temporal zone contributions for the routing worker.
- * Returns coverage × offset per zone–time-window entry, keyed by cellId.
- */
-function computeTemporalZoneCells(
-  grid: HexGrid | null,
-  zones: RiskZone[],
-): Record<CellId, TemporalZoneCellEntry[]> {
-  const temporal = zones.filter((z) => z.startTime !== undefined || z.endTime !== undefined);
-  const out: Record<CellId, TemporalZoneCellEntry[]> = {};
-  if (!grid || temporal.length === 0) return out;
-  for (const cell of grid.cells) {
-    const entries: TemporalZoneCellEntry[] = [];
-    for (const zone of temporal) {
-      if (!zone.enabled || zone.offset === 0) continue;
-      const offsets = zoneOffsetsForCell(cell.vertices, [zone]);
-      const contribution = offsets[zone.risk];
-      if (contribution !== undefined && contribution !== 0) {
-        const entry: TemporalZoneCellEntry = { risk: zone.risk, contribution };
-        if (zone.startTime !== undefined) entry.startTime = zone.startTime;
-        if (zone.endTime !== undefined) entry.endTime = zone.endTime;
-        entries.push(entry);
-      }
-    }
-    if (entries.length > 0) out[cell.id] = entries;
   }
   return out;
 }
@@ -299,7 +271,10 @@ export function createBlockbusterStore(engine: Engine) {
         const risk: Record<CellId, RiskProfile> = {};
         for (const [id, state] of s.riskStates)
           risk[id] = applyZoneOffsets(effectiveProfile(state), s.zoneContribution.get(id));
-        const temporalZoneCells = computeTemporalZoneCells(s.grid, s.zones);
+        // Zones with time bounds or motion are sent raw to the worker for per-step evaluation.
+        const timeVaryingZones = s.zones.filter(
+          (z) => z.startTime !== undefined || z.endTime !== undefined || z.motion !== undefined,
+        );
         const waypointWindows = syncWindows(s.waypointWindows, s.waypoints.length);
         const request: RouteRequest = {
           grid: toHexGridDto(s.grid),
@@ -310,7 +285,7 @@ export function createBlockbusterStore(engine: Engine) {
           optimiseOrder: s.optimiseOrder,
           journeyParams: s.journeyParams,
           dayNight: s.dayNight,
-          temporalZoneCells,
+          timeVaryingZones,
           waypointWindows,
         };
         try {
@@ -489,14 +464,21 @@ export function selectCellCost(state: BlockbusterState, cellId: CellId): number 
 
 /**
  * Time-aware effective risk profile for a cell at `state.displayTime`.
- * Applies: always-active zone offsets → active temporal zone offsets →
- * day/night modifiers → speed modifiers. Used by overlay layers and the
- * inspector to show a consistent view of what the planner actually costs.
+ * Applies: always-active zone offsets → active time-varying zone offsets
+ * (using area-weighted coverage fraction via `ringAt`) → day/night modifiers
+ * → speed modifiers. Used by overlay layers and the inspector.
  */
 export function selectDisplayProfile(
   state: Pick<
     BlockbusterState,
-    'riskStates' | 'zoneContribution' | 'zones' | 'displayTime' | 'dayNight' | 'journeyParams'
+    | 'riskStates'
+    | 'zoneContribution'
+    | 'zones'
+    | 'displayTime'
+    | 'dayNight'
+    | 'journeyParams'
+    | 'extent'
+    | 'hexSize'
   >,
   cellId: CellId,
   cellVertices: readonly WorldPoint[],
@@ -504,14 +486,20 @@ export function selectDisplayProfile(
   const riskState = state.riskStates.get(cellId);
   if (!riskState) return null;
   let profile = applyZoneOffsets(effectiveProfile(riskState), state.zoneContribution.get(cellId));
-  const temporalActive = state.zones.filter(
+  const timeVaryingActive = state.zones.filter(
     (z) =>
-      (z.startTime !== undefined || z.endTime !== undefined) &&
+      (z.startTime !== undefined || z.endTime !== undefined || z.motion !== undefined) &&
       z.enabled &&
       isZoneActiveAt(z, state.displayTime),
   );
-  if (temporalActive.length > 0) {
-    profile = applyZoneOffsets(profile, zoneOffsetsForCell(cellVertices, temporalActive));
+  if (timeVaryingActive.length > 0) {
+    const offsets: Partial<Record<RiskType, number>> = {};
+    for (const zone of timeVaryingActive) {
+      const ring = ringAt(zone, state.displayTime, state.extent, state.hexSize);
+      const coverage = coverageFraction(cellVertices, ring);
+      if (coverage > 0) offsets[zone.risk] = (offsets[zone.risk] ?? 0) + coverage * zone.offset;
+    }
+    profile = applyZoneOffsets(profile, offsets);
   }
   profile = applyTemporalModifiers(profile, state.displayTime, state.dayNight);
   profile = speedModifiedProfile(profile, state.journeyParams.fixedSpeedKmh);
