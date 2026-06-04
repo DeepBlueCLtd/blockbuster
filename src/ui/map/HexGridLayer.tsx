@@ -17,6 +17,7 @@ export function HexGridLayer() {
   const selectedCellId = useBlockbusterStore((s) => s.selectedCellId);
   const hoveredCellId = useBlockbusterStore((s) => s.hoveredCellId);
   const waypoints = useBlockbusterStore((s) => s.waypoints);
+  const drawMode = useBlockbusterStore((s) => s.drawMode);
   const selectCell = useBlockbusterStore((s) => s.selectCell);
   const hoverCell = useBlockbusterStore((s) => s.hoverCell);
 
@@ -31,6 +32,13 @@ export function HexGridLayer() {
 
   if (!grid || !showHexGrid) return null;
   const waypointSet = new Set(waypoints);
+  // While an extra-risk draw tool is armed, taps must not select or hover a
+  // cell — on touch devices the click-through CSS (pointer-events: none) does
+  // not stop the polygon's own click, so a tap would otherwise select a cell
+  // instead of starting the shape. Disarming the handlers makes drawing behave
+  // identically on mouse and touch; Terra Draw still receives the gesture at the
+  // map-container level. See ExtraRiskDraw / app.css `.leaflet-drawing`.
+  const drawing = drawMode !== null;
 
   // Own pane (below the pie + route panes) so the stack order survives toggling
   // the grid off and on — Leaflet otherwise paints by DOM insertion order.
@@ -51,11 +59,13 @@ export function HexGridLayer() {
         const isHovered = cell.id === hoveredCellId;
         const isWaypoint = waypointSet.has(cell.id);
 
-        const handlers: LeafletEventHandlerFnMap = {
-          click: () => selectCell(cell.id),
-          mouseover: () => hoverCell(cell.id),
-          mouseout: () => hoverCell(null),
-        };
+        const handlers: LeafletEventHandlerFnMap = drawing
+          ? {}
+          : {
+              click: () => selectCell(cell.id),
+              mouseover: () => hoverCell(cell.id),
+              mouseout: () => hoverCell(null),
+            };
 
         return (
           <Polygon

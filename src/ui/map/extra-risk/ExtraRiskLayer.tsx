@@ -13,8 +13,12 @@ export function ExtraRiskLayer() {
   const zones = useBlockbusterStore((s) => s.zones);
   const selectedZoneId = useBlockbusterStore((s) => s.selectedZoneId);
   const activeTab = useBlockbusterStore((s) => s.activeTab);
+  const drawMode = useBlockbusterStore((s) => s.drawMode);
   const selectZone = useBlockbusterStore((s) => s.selectZone);
-  const interactive = activeTab === 'extra';
+  // Clickable to select only on the Extra-factors tab, and never while a draw
+  // tool is armed — on touch a tap inside a committed zone would otherwise
+  // select it instead of starting the new shape (see HexGridLayer).
+  const interactive = activeTab === 'extra' && drawMode === null;
 
   if (zones.length === 0) return null;
 
