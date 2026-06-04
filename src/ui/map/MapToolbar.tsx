@@ -117,9 +117,10 @@ export function MapToolbar() {
           />
         </label>
       </div>
-      <span className="map-stat">
-        {cellCount} cells{planning ? ' · planning…' : ''}
-      </span>
+      <div className="map-stat">
+        <span>{cellCount} cells</span>
+        <span style={{ visibility: planning ? 'visible' : 'hidden' }}>Planning…</span>
+      </div>
     </div>
   );
 }
