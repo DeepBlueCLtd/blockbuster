@@ -14,6 +14,11 @@ The full build spec lives in **`docs/spec/`** (read `docs/spec/README.md` first)
 It is the authoritative reference for behaviour and acceptance criteria; consult
 the relevant `docs/spec/NN-*.md` before implementing an engine module.
 
+**New to the project?** Open **`docs/approaches.html`** in a browser for an
+interactive guide to the algorithms — terrain generation, hex grids, risk
+modelling, and route optimisation with hands-on widgets. Good first read before
+diving into the spec or engine code.
+
 ## Commands
 
 ```bash
