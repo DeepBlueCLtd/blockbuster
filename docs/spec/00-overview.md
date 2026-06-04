@@ -32,7 +32,7 @@ by the analyst's appetite, is the cell's **traversal cost**:
 | Cold | low temperature (elevation) |
 | Heat | high temperature (lowlands) |
 | Lack of water | distance from water |
-| Thieves | banditry / proximity to towns |
+| Humans | banditry / proximity to towns |
 
 The mapping terrain → risk lives in the [Risk model](./05-engine-risk.md); the
 cost formula lives in the shared kernel so charts and routing agree exactly.

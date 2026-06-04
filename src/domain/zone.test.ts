@@ -16,7 +16,7 @@ function zone(over: Partial<RiskZone> = {}): RiskZone {
   return {
     id: 'z',
     name: 'z',
-    risk: 'thief',
+    risk: 'human',
     offset: 0.4,
     kind: 'rectangle',
     ring: [
@@ -32,7 +32,7 @@ function zone(over: Partial<RiskZone> = {}): RiskZone {
 
 describe('zone scoring', () => {
   it('applies the full offset when a zone fully covers the cell', () => {
-    expect(zoneOffsetsForCell(cell, [zone({ offset: 0.4 })]).thief ?? 0).toBeCloseTo(0.4, 6);
+    expect(zoneOffsetsForCell(cell, [zone({ offset: 0.4 })]).human ?? 0).toBeCloseTo(0.4, 6);
   });
 
   it('area-weights a half-covering zone', () => {
@@ -45,7 +45,7 @@ describe('zone scoring', () => {
         { x: 0, y: 2 },
       ],
     });
-    expect(zoneOffsetsForCell(cell, [leftHalf]).thief ?? 0).toBeCloseTo(0.2, 6);
+    expect(zoneOffsetsForCell(cell, [leftHalf]).human ?? 0).toBeCloseTo(0.2, 6);
   });
 
   it('sums zones on the same channel and ignores zero-offset zones', () => {
@@ -54,14 +54,14 @@ describe('zone scoring', () => {
       zone({ id: 'z2', offset: -0.1 }),
       zone({ id: 'z3', offset: 0 }),
     ]);
-    expect(offsets.thief ?? 0).toBeCloseTo(0.2, 6);
+    expect(offsets.human ?? 0).toBeCloseTo(0.2, 6);
   });
 
   it('folds offsets into a profile, clamping into [0, 1]', () => {
     const p = uniformProfile(0.8);
-    expect(applyZoneOffsets(p, { thief: 0.5 }).thief).toBe(1); // 0.8 + 0.5 → clamp 1
-    expect(applyZoneOffsets(p, { thief: -0.95 }).thief).toBe(0); // 0.8 − 0.95 → clamp 0
-    expect(applyZoneOffsets(p, { thief: -0.3 }).thief).toBeCloseTo(0.5, 6);
+    expect(applyZoneOffsets(p, { human: 0.5 }).human).toBe(1); // 0.8 + 0.5 → clamp 1
+    expect(applyZoneOffsets(p, { human: -0.95 }).human).toBe(0); // 0.8 − 0.95 → clamp 0
+    expect(applyZoneOffsets(p, { human: -0.3 }).human).toBeCloseTo(0.5, 6);
     expect(applyZoneOffsets(p, undefined)).toBe(p); // untouched, same reference
   });
 });

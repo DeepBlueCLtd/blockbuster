@@ -67,10 +67,10 @@ describe('store — extra-risk zones', () => {
 
   it('updates name and risk, and clamps the offset to [-0.5, 0.5]', () => {
     store.getState().addZone(makeZone('a'));
-    store.getState().updateZone('a', { name: 'Minefield', risk: 'thief', offset: 0.9 });
+    store.getState().updateZone('a', { name: 'Minefield', risk: 'human', offset: 0.9 });
     const zone = store.getState().zones[0];
     expect(zone?.name).toBe('Minefield');
-    expect(zone?.risk).toBe('thief');
+    expect(zone?.risk).toBe('human');
     expect(zone?.offset).toBe(0.5); // clamped from 0.9
     store.getState().updateZone('a', { offset: -3 });
     expect(store.getState().zones[0]?.offset).toBe(-0.5); // clamped from -3
@@ -111,12 +111,12 @@ describe('store — extra-risk zones', () => {
     expect(cellId).toBeDefined();
     if (!cellId) return;
 
-    const baseThief = selectEffectiveProfile(store.getState(), cellId)?.thief ?? 0;
+    const baseHuman = selectEffectiveProfile(store.getState(), cellId)?.human ?? 0;
 
-    // A zone covering the whole world (coverage 1 everywhere) raising thief by 0.5.
+    // A zone covering the whole world (coverage 1 everywhere) raising human by 0.5.
     store.getState().addZone(
       makeZone('world', {
-        risk: 'thief',
+        risk: 'human',
         offset: 0.5,
         ring: [
           { x: 0, y: 0 },
@@ -127,8 +127,8 @@ describe('store — extra-risk zones', () => {
       }),
     );
 
-    expect(store.getState().zoneContribution.get(cellId)?.thief ?? 0).toBeCloseTo(0.5, 6);
-    const withZone = selectEffectiveProfile(store.getState(), cellId)?.thief ?? 0;
-    expect(withZone).toBeCloseTo(Math.min(1, baseThief + 0.5), 6);
+    expect(store.getState().zoneContribution.get(cellId)?.human ?? 0).toBeCloseTo(0.5, 6);
+    const withZone = selectEffectiveProfile(store.getState(), cellId)?.human ?? 0;
+    expect(withZone).toBeCloseTo(Math.min(1, baseHuman + 0.5), 6);
   });
 });

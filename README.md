@@ -10,7 +10,7 @@ The cost function in each hex cell will be a compsite of a number of risks, to i
 - cold
 - heat
 - absence of water
-- thief
+- human
 
 ## UI
 The general layout will be a map control on the left, with tabs controls on the right hand side.  These tabs will be present:

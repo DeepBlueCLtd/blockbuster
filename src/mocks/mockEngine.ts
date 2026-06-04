@@ -307,7 +307,7 @@ export function createMockRiskEngine(): RiskEngine {
         cold: clamp01((15 - sample.temperature) / 25),
         heat: clamp01((sample.temperature - 22) / 12),
         water: clamp01(1 - sample.waterProximity),
-        thief: clamp01(sample.banditActivity),
+        human: clamp01(sample.banditActivity),
       };
     },
   };
@@ -373,7 +373,7 @@ function buildGraph(dto: HexGridDto, risk: Record<CellId, RiskProfile>): Graph {
         .map(toCellId)
         .filter((nid) => center.has(nid));
     },
-    riskAt: (id) => risk[id] ?? { animals: 0, cold: 0, heat: 0, water: 0, thief: 0 },
+    riskAt: (id) => risk[id] ?? { animals: 0, cold: 0, heat: 0, water: 0, human: 0 },
   };
 }
 

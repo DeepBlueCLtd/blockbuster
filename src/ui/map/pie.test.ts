@@ -9,7 +9,7 @@ import {
   sliceRing,
 } from './pie';
 
-const noRisk: Record<RiskType, number> = { animals: 0, cold: 0, heat: 0, water: 0, thief: 0 };
+const noRisk: Record<RiskType, number> = { animals: 0, cold: 0, heat: 0, water: 0, human: 0 };
 
 describe('riskShares', () => {
   it('returns no shares when the total cost is zero', () => {
@@ -23,8 +23,8 @@ describe('riskShares', () => {
   });
 
   it('keeps the canonical risk order and skips zero channels', () => {
-    const shares = riskShares({ ...noRisk, thief: 2, animals: 2 });
-    expect(shares.map((s) => s.risk)).toEqual(['animals', 'thief']);
+    const shares = riskShares({ ...noRisk, human: 2, animals: 2 });
+    expect(shares.map((s) => s.risk)).toEqual(['animals', 'human']);
   });
 
   it('ignores negative contributions', () => {
@@ -102,8 +102,8 @@ describe('riskStackRects', () => {
   });
 
   it('stacks segments in canonical risk order', () => {
-    const rects = riskStackRects(center, 2, { ...noRisk, thief: 1, animals: 1 });
-    expect(rects.map((r) => r.risk)).toEqual(['animals', 'thief']);
+    const rects = riskStackRects(center, 2, { ...noRisk, human: 1, animals: 1 });
+    expect(rects.map((r) => r.risk)).toEqual(['animals', 'human']);
   });
 
   it('each segment top equals the next segment bottom', () => {

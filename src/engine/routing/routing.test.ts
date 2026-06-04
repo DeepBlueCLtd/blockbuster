@@ -8,7 +8,7 @@ import { fixtureRequest, fixtureWaypoints } from '@/mocks/fixtures';
 const SQRT3 = Math.sqrt(3);
 
 /**
- * A controlled `cols × rows` axial patch with a high-`thief` band across the
+ * A controlled `cols × rows` axial patch with a high-`human` band across the
  * middle row (leaving the top and bottom rows clear for a detour). Centres use
  * pointy-top geometry so movement costs are sane.
  */
@@ -20,7 +20,7 @@ function bandScenario(cols: number, rows: number) {
       const id = toCellId({ q, r });
       cells.push({ id, q, r, center: { x: SQRT3 * (q + r / 2), y: 1.5 * r } });
       const inBand = r === Math.floor(rows / 2) && q >= 2 && q <= cols - 3;
-      risk[id] = { animals: 0, cold: 0, heat: 0, water: 0, thief: inBand ? 1 : 0 };
+      risk[id] = { animals: 0, cold: 0, heat: 0, water: 0, human: inBand ? 1 : 0 };
     }
   }
   const grid: HexGridDto = {
@@ -105,14 +105,14 @@ describe('routing core (spec)', () => {
     const { grid, risk, start, end } = bandScenario(9, 3);
     const base: RouteRequest = { grid, risk, params: DEFAULT_COST_PARAMS, waypoints: [start, end], coaCount: 1 };
 
-    const tolerant = appetiteFor(DEFAULT_COST_PARAMS, 1); // ignore thief
-    const intolerant = appetiteFor(DEFAULT_COST_PARAMS, 0); // avoid thief
+    const tolerant = appetiteFor(DEFAULT_COST_PARAMS, 1); // ignore human
+    const intolerant = appetiteFor(DEFAULT_COST_PARAMS, 0); // avoid human
 
     const tolerantPath = planRoutes({ ...base, params: tolerant }).coas[0]!.path;
     const intolerantPath = planRoutes({ ...base, params: intolerant }).coas[0]!.path;
 
-    expect(rawExposure(intolerantPath, risk, 'thief')).toBeLessThan(
-      rawExposure(tolerantPath, risk, 'thief'),
+    expect(rawExposure(intolerantPath, risk, 'human')).toBeLessThan(
+      rawExposure(tolerantPath, risk, 'human'),
     );
   });
 
@@ -178,7 +178,7 @@ describe('routing core (optimise order)', () => {
     for (let q = 0; q < cols; q++) {
       const id = toCellId({ q, r: 0 });
       cells.push({ id, q, r: 0, center: { x: SQRT3 * q, y: 0 } });
-      risk[id] = { animals: 0, cold: 0, heat: 0, water: 0, thief: 0 };
+      risk[id] = { animals: 0, cold: 0, heat: 0, water: 0, human: 0 };
     }
     const grid: HexGridDto = {
       layout: { orientation: 'pointy', size: 1, origin: { x: 0, y: 0 } },
@@ -224,6 +224,6 @@ describe('routing core (optimise order)', () => {
   });
 });
 
-function appetiteFor(params: CostParams, thiefAppetite: number): CostParams {
-  return { ...params, appetite: { ...params.appetite, thief: thiefAppetite } };
+function appetiteFor(params: CostParams, humanAppetite: number): CostParams {
+  return { ...params, appetite: { ...params.appetite, human: humanAppetite } };
 }

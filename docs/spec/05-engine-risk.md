@@ -29,7 +29,7 @@ a pure, stateless `sample → profile` mapping.
 | cold | rises as `temperature` falls (cold mountains) |
 | heat | rises as `temperature` climbs (hot lowlands) |
 | water | `1 - waterProximity` |
-| thief | `banditActivity` (peaks in/near towns) |
+| human | `banditActivity` (peaks in/near towns) |
 
 Clamp everything to `[0,1]`. Keep the mapping legible — analysts reason about it.
 The mock encodes exactly these; treat it as the reference and refine the curves.
@@ -39,7 +39,7 @@ The mock encodes exactly these; treat it as the reference and refine the curves.
 - Every channel of `baseProfile` ∈ `[0,1]` for all plausible samples.
 - Monotonic where it should be: heat ↑ with temperature, cold ↓ with temperature,
   water ↑ as `waterProximity` ↓.
-- Thief tracks `banditActivity` / town biome; animals track vegetation.
+- Human tracks `banditActivity` / town biome; animals track vegetation.
 - Pure: same sample ⇒ same profile.
 
 ## Build in isolation
@@ -50,7 +50,7 @@ other module needed. Property-test the range invariant across random samples
 
 ## Open questions
 
-- Should biome directly bump a channel (e.g. town → +thief) in addition to the
+- Should biome directly bump a channel (e.g. town → +human) in addition to the
   continuous attributes? v1: continuous attributes are primary; a small biome
   nudge is acceptable (the mock adds a savannah→animals nudge).
 - Non-linear curves (e.g. heat ramps sharply above 35 °C)? Fine to add; keep them

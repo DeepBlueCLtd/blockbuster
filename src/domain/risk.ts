@@ -6,7 +6,7 @@ import type { CellId } from './hex';
  * The five risk channels from the brief. Order is stable and is the canonical
  * order for charts, legends and serialised records.
  */
-export const RISK_TYPES = ['animals', 'cold', 'heat', 'water', 'thief'] as const;
+export const RISK_TYPES = ['animals', 'cold', 'heat', 'water', 'human'] as const;
 export type RiskType = (typeof RISK_TYPES)[number];
 
 /** Human-readable labels for UI. */
@@ -15,7 +15,7 @@ export const RISK_LABELS: Record<RiskType, string> = {
   cold: 'Cold',
   heat: 'Heat',
   water: 'Lack of water',
-  thief: 'Thieves',
+  human: 'Humans',
 };
 
 /** A complete set of risk levels (each 0…1) for one cell. */
@@ -41,7 +41,7 @@ export interface CellRiskState {
 
 /** Build a profile from a constant value (handy for tests/fixtures). */
 export function uniformProfile(value: Unit): RiskProfile {
-  return { animals: value, cold: value, heat: value, water: value, thief: value };
+  return { animals: value, cold: value, heat: value, water: value, human: value };
 }
 
 /** Merge base levels with overrides to get the levels actually used for costing. */

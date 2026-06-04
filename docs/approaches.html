@@ -17,7 +17,7 @@
     --risk-cold: #3498db;
     --risk-heat: #e74c3c;
     --risk-water: #1abc9c;
-    --risk-thief: #9b59b6;
+    --risk-human: #9b59b6;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -363,7 +363,7 @@
   <li><span class="risk-dot" style="background:var(--risk-cold)"></span> <strong>Cold</strong> — driven by elevation and low temperature</li>
   <li><span class="risk-dot" style="background:var(--risk-heat)"></span> <strong>Heat</strong> — driven by high temperature</li>
   <li><span class="risk-dot" style="background:var(--risk-water)"></span> <strong>Lack of water</strong> — inversely correlated with water proximity</li>
-  <li><span class="risk-dot" style="background:var(--risk-thief)"></span> <strong>Thieves</strong> — driven by bandit activity near settlements</li>
+  <li><span class="risk-dot" style="background:var(--risk-human)"></span> <strong>Humans</strong> — driven by bandit activity near settlements</li>
 </ul>
 <p>
   Together these form the cell's <strong>risk profile</strong> — a five-dimensional vector. Analysts can override any channel if they possess better local intelligence; overridden values take precedence during route planning and are visually highlighted in the UI.
@@ -458,8 +458,8 @@
         <span class="value">0.50</span>
       </div>
       <div class="slider-row">
-        <label><span class="risk-dot" style="background:var(--risk-thief)"></span>Thieves</label>
-        <input type="range" min="0" max="100" value="50" data-risk="thief">
+        <label><span class="risk-dot" style="background:var(--risk-human)"></span>Humans</label>
+        <input type="range" min="0" max="100" value="50" data-risk="human">
         <span class="value">0.50</span>
       </div>
     </div>
@@ -468,7 +468,7 @@
     </div>
   </div>
   <p class="note">
-    Fixed risk profile for this cell: Animals 0.6, Cold 0.3, Heat 0.8, Water 0.5, Thieves 0.2 (w<sub>risk</sub> = 10).
+    Fixed risk profile for this cell: Animals 0.6, Cold 0.3, Heat 0.8, Water 0.5, Humans 0.2 (w<sub>risk</sub> = 10).
     <br>Faded bars show the raw risk × w<sub>risk</sub>; solid bars show the effective cost after appetite scaling.
   </p>
 </div>
@@ -524,7 +524,7 @@
   The three COAs are visualised as <strong>stacked bar charts</strong>. Each bar represents one cell along the route; each coloured segment shows the contribution of one risk channel to that cell's cost. The total cost of each COA is displayed above its chart.
 </p>
 <p>
-  This decomposition is possible because the cost function is additive across channels — the analyst can immediately see which risks dominate each route and make an informed choice. For example, one COA might show tall red (heat) segments while another shows tall purple (thief) segments of similar overall height, representing a genuine trade-off.
+  This decomposition is possible because the cost function is additive across channels — the analyst can immediately see which risks dominate each route and make an informed choice. For example, one COA might show tall red (heat) segments while another shows tall purple (human) segments of similar overall height, representing a genuine trade-off.
 </p>
 
 <div class="widget">
@@ -578,7 +578,7 @@
   <tr><th>COA</th><td><strong>Course of Action</strong> — one of the three route options the system generates.</td></tr>
   <tr><th>Seed</th><td>A number that controls the random landscape generation. Same seed = same landscape.</td></tr>
   <tr><th>Hex cell</th><td>One hexagonal tile on the grid. Each cell has its own risk profile.</td></tr>
-  <tr><th>Risk profile</th><td>The five danger scores (animals, cold, heat, water, thieves) for a single cell.</td></tr>
+  <tr><th>Risk profile</th><td>The five danger scores (animals, cold, heat, water, humans) for a single cell.</td></tr>
   <tr><th>Risk appetite</th><td>How tolerant the analyst is of each risk type, set via sliders (0 = avoid, 1 = tolerate).</td></tr>
   <tr><th>Waypoint</th><td>A cell the analyst selects as a destination — the route must pass through all waypoints.</td></tr>
   <tr><th>A* algorithm</th><td>A well-known shortest-path algorithm that finds the lowest-cost route through a graph.</td></tr>
@@ -597,10 +597,10 @@ const RISK_COLORS = {
   cold:    '#3498db',
   heat:    '#e74c3c',
   water:   '#1abc9c',
-  thief:   '#9b59b6',
+  human:   '#9b59b6',
 };
-const RISK_NAMES = ['animals', 'cold', 'heat', 'water', 'thief'];
-const RISK_LABELS = { animals: 'Animals', cold: 'Cold', heat: 'Heat', water: 'Water', thief: 'Thieves' };
+const RISK_NAMES = ['animals', 'cold', 'heat', 'water', 'human'];
+const RISK_LABELS = { animals: 'Animals', cold: 'Cold', heat: 'Heat', water: 'Water', human: 'Humans' };
 
 // Simple seeded PRNG (mulberry32) — same one the app uses
 function mulberry32(seed) {
@@ -852,7 +852,7 @@ function mulberry32(seed) {
       cold:    Math.min(1, t.elevation * 0.7 + (1 - t.temperature) * 0.4),
       heat:    Math.min(1, t.temperature * 0.95),
       water:   Math.min(1, (1 - t.water) * 0.85),
-      thief:   Math.min(1, t.bandit * 0.9),
+      human:   Math.min(1, t.bandit * 0.9),
     };
   }
 
@@ -896,7 +896,7 @@ function mulberry32(seed) {
   const canvas = document.getElementById('appetiteCanvas');
   const ctx = canvas.getContext('2d');
 
-  const fixedRisk = { animals: 0.6, cold: 0.3, heat: 0.8, water: 0.5, thief: 0.2 };
+  const fixedRisk = { animals: 0.6, cold: 0.3, heat: 0.8, water: 0.5, human: 0.2 };
   const riskWeight = 10;
 
   function getAppetites() {
@@ -993,7 +993,7 @@ function mulberry32(seed) {
           // Bias each COA differently
           let base = rng() * 0.8;
           if (c === 1 && name === 'heat') base *= 0.3; // Alt1 avoids heat
-          if (c === 1 && name === 'thief') base = Math.min(1, base + 0.4); // but more thieves
+          if (c === 1 && name === 'human') base = Math.min(1, base + 0.4); // but more humans
           if (c === 2 && name === 'animals') base *= 0.2; // Alt2 avoids animals
           if (c === 2 && name === 'cold') base = Math.min(1, base + 0.3); // but colder
           profile[name] = base * (1 - 0.5) * 10; // appetite 0.5

@@ -47,7 +47,7 @@ reproduces the same world and COAs.
 
 ## Risk (`risk.ts`)
 
-- `RISK_TYPES` (stable order) `= animals, cold, heat, water, thief`; `RiskType`
+- `RISK_TYPES` (stable order) `= animals, cold, heat, water, human`; `RiskType`
   is its union; `RISK_LABELS` for UI.
 - `RiskProfile = Record<RiskType, Unit>` — all five levels for a cell.
 - `RiskOverrides = Partial<Record<RiskType, Unit>>` — analyst edits.
