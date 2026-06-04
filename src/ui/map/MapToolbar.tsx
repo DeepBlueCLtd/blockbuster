@@ -93,28 +93,30 @@ export function MapToolbar() {
           ))}
         </select>
       </label>
-      <label>
-        Hex {hexSize.toFixed(1)} km
-        <input
-          type="range"
-          min={1.2}
-          max={5}
-          step={0.2}
-          value={hexSize}
-          onChange={(event) => setHexSize(Number(event.target.value))}
-        />
-      </label>
-      <label>
-        Time {formatTime(displayTime)}
-        <input
-          type="range"
-          min={0}
-          max={1439}
-          step={15}
-          value={displayTime}
-          onChange={(event) => setDisplayTime(Number(event.target.value))}
-        />
-      </label>
+      <div className="map-sliders">
+        <label>
+          Hex {hexSize.toFixed(1)} km
+          <input
+            type="range"
+            min={1.2}
+            max={5}
+            step={0.2}
+            value={hexSize}
+            onChange={(event) => setHexSize(Number(event.target.value))}
+          />
+        </label>
+        <label>
+          Time {formatTime(displayTime)}
+          <input
+            type="range"
+            min={0}
+            max={1439}
+            step={15}
+            value={displayTime}
+            onChange={(event) => setDisplayTime(Number(event.target.value))}
+          />
+        </label>
+      </div>
       <span className="map-stat">
         {cellCount} cells{planning ? ' · planning…' : ''}
       </span>

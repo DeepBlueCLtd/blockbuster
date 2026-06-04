@@ -78,6 +78,12 @@ body,
   cursor: pointer;
 }
 
+.map-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .map-toolbar select:disabled {
   opacity: 0.5;
 }

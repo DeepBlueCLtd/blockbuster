@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RISK_LABELS, RISK_TYPES, ZONE_OFFSET_MAX, ZONE_OFFSET_MIN } from '@domain';
-import type { RiskType, WorldExtent, WorldPoint } from '@domain';
+import type { RiskZone, RiskType, WorldExtent, WorldPoint } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import type { DrawMode } from '@/state/types';
 import { formatTime } from '@/ui/utils/time';
@@ -16,18 +16,20 @@ function fmtOffset(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 }
 
-/** 4-point parallelogram ring for a storm band spanning the domain (open ring). */
-function generateStormRing(
+/** Number of discrete position slices used to simulate storm movement. */
+const STORM_STEPS = 12;
+
+/** 4-point parallelogram ring centred at `cx`, spanning the domain height (open ring). */
+function stormStripRing(
+  cx: number,
   extent: WorldExtent,
   hexSizeKm: number,
   bandCells: number,
   slantLeft: boolean,
 ): WorldPoint[] {
-  const { width, height } = extent;
-  const cx = width / 2;
+  const { height } = extent;
   const halfW = (bandCells * hexSizeKm) / 2;
-  const SLANT_DEG = 30;
-  const drift = height * Math.tan((SLANT_DEG * Math.PI) / 180) * (slantLeft ? -1 : 1);
+  const drift = height * Math.tan((30 * Math.PI) / 180) * (slantLeft ? -1 : 1);
   const margin = hexSizeKm;
   return [
     { x: cx - halfW, y: -margin },
@@ -35,6 +37,45 @@ function generateStormRing(
     { x: cx + halfW + drift, y: height + margin },
     { x: cx - halfW + drift, y: height + margin },
   ];
+}
+
+/**
+ * Build N zones that simulate a storm band sweeping east→west across the domain.
+ * Each zone covers one time slice and one horizontal position; together they give
+ * the illusion of movement when the time slider is dragged.
+ */
+function generateMovingStorm(
+  extent: WorldExtent,
+  hexSizeKm: number,
+  intensity: number,
+  slantLeft: boolean,
+  startTime: number,
+  endTime: number,
+): Omit<RiskZone, 'id'>[] {
+  const { width } = extent;
+  const bandCells = 5;
+  const N = STORM_STEPS;
+  // Total duration in minutes, handling midnight wrap.
+  const D = endTime >= startTime ? endTime - startTime : 1440 - startTime + endTime;
+  const stepDur = D / N;
+
+  return Array.from({ length: N }, (_, i) => {
+    // Centre sweeps from near east edge (i=0) to near west edge (i=N-1).
+    const cx = width * (N - 0.5 - i) / N;
+    const ring = stormStripRing(cx, extent, hexSizeKm, bandCells, slantLeft);
+    const rawStart = startTime + i * stepDur;
+    const rawEnd = startTime + (i + 1) * stepDur;
+    return {
+      name: `Storm ${String(i + 1).padStart(2, '0')}/${N}`,
+      risk: 'cold' as RiskType,
+      kind: 'polygon' as const,
+      ring,
+      offset: intensity,
+      enabled: true,
+      startTime: Math.round(rawStart) % 1440,
+      endTime: Math.round(rawEnd) % 1440,
+    };
+  });
 }
 
 /**
@@ -309,18 +350,15 @@ export function ExtraRiskPanel() {
             <button
               type="button"
               onClick={() => {
-                const ring = generateStormRing(extent, hexSize, 5, stormSlantLeft);
-                addZone({
-                  id: crypto.randomUUID(),
-                  name: `Storm ${formatTime(stormStart)}–${formatTime(stormEnd)}`,
-                  risk: 'cold',
-                  kind: 'polygon',
-                  ring,
-                  offset: stormIntensity,
-                  enabled: true,
-                  startTime: stormStart,
-                  endTime: stormEnd,
-                });
+                const zones = generateMovingStorm(
+                  extent,
+                  hexSize,
+                  stormIntensity,
+                  stormSlantLeft,
+                  stormStart,
+                  stormEnd,
+                );
+                zones.forEach((z) => addZone({ id: crypto.randomUUID(), ...z }));
                 setShowStorm(false);
               }}
             >
