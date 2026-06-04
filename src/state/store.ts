@@ -89,7 +89,7 @@ export function createBlockbusterStore(engine: Engine) {
       hoveredCellId: null,
       selectedZoneId: null,
       drawMode: null,
-      activeTab: 'coas',
+      activeTab: 'waypoints',
       displayRisk: 'composite',
       // Start on the underlying terrain map; the hex grid is a switchable overlay.
       showTerrain: true,
