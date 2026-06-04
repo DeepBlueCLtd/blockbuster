@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Pane, Polygon } from 'react-leaflet';
 import type { LeafletEventHandlerFnMap } from 'leaflet';
 import { applyZoneOffsets, cellRiskCost, effectiveProfile } from '@domain';
-import { useBlockbusterStore } from '@/state/store';
+import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { heatColor } from '@/ui/theme';
 import { worldRingToLatLng } from './projection';
 
@@ -19,6 +19,10 @@ export function HexGridLayer() {
   const waypoints = useBlockbusterStore((s) => s.waypoints);
   const selectCell = useBlockbusterStore((s) => s.selectCell);
   const hoverCell = useBlockbusterStore((s) => s.hoverCell);
+  const displayTime = useBlockbusterStore((s) => s.displayTime);
+  const dayNight = useBlockbusterStore((s) => s.dayNight);
+  const journeyParams = useBlockbusterStore((s) => s.journeyParams);
+  const zones = useBlockbusterStore((s) => s.zones);
 
   const maxCost = useMemo(() => {
     let max = 1e-6;
@@ -37,10 +41,11 @@ export function HexGridLayer() {
   return (
     <Pane name="hexgrid" style={{ zIndex: 410 }}>
       {grid.cells.map((cell) => {
-        const state = riskStates.get(cell.id);
-        const eff = state
-          ? applyZoneOffsets(effectiveProfile(state), zoneContribution.get(cell.id))
-          : null;
+        const eff = selectDisplayProfile(
+          { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams },
+          cell.id,
+          cell.vertices,
+        );
         const intensity = !eff
           ? 0
           : displayRisk === 'composite'

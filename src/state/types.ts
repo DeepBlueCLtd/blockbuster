@@ -2,12 +2,15 @@ import type {
   CellId,
   CellRiskState,
   CostParams,
+  DayNightConfig,
   HexGrid,
+  JourneyParams,
   RiskType,
   RiskZone,
   RoutePlan,
   TerrainField,
   TerrainSample,
+  TimeWindow,
   WorldExtent,
   ZoneKind,
   Km,
@@ -51,6 +54,20 @@ export interface BlockbusterState {
   zones: RiskZone[];
   /** Which risk channel a newly drawn zone targets (the Extra-risk tab dropdown). */
   zoneRiskType: RiskType;
+
+  // --- Journey / time mechanics ---
+  journeyParams: JourneyParams;
+  dayNight: DayNightConfig;
+  /**
+   * Optional arrival time window per waypoint (parallel to `waypoints`).
+   * Always the same length as `waypoints`; null means no constraint.
+   */
+  waypointWindows: (TimeWindow | null)[];
+  /**
+   * Current display time for the map overlay (minutes from midnight).
+   * UI-only: changing this does NOT trigger a replan.
+   */
+  displayTime: number;
 
   // --- Routing output ---
   plan: RoutePlan | null;
@@ -105,9 +122,23 @@ export interface BlockbusterState {
   setShowRiskBars: (show: boolean) => void;
   setShowRiskStacks: (show: boolean) => void;
   setShowRoutes: (show: boolean) => void;
+  // --- Journey / time mechanics ---
+  setJourneyParams: (patch: Partial<JourneyParams>) => void;
+  setDayNight: (config: DayNightConfig) => void;
+  /** Set or clear the time window for a waypoint by index. */
+  setWaypointWindow: (index: number, window: TimeWindow | null) => void;
+  /** Update the map display time without triggering a replan. */
+  setDisplayTime: (minutes: number) => void;
+
   // --- Extra-risk zones ---
   addZone: (zone: RiskZone) => void;
-  updateZone: (id: string, patch: Partial<Pick<RiskZone, 'name' | 'risk' | 'offset'>>) => void;
+  updateZone: (
+    id: string,
+    patch: Partial<Pick<RiskZone, 'name' | 'risk' | 'offset'>> & {
+      startTime?: number | null;
+      endTime?: number | null;
+    },
+  ) => void;
   removeZone: (id: string) => void;
   selectZone: (id: string | null) => void;
   toggleZoneEnabled: (id: string) => void;

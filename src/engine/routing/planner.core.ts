@@ -3,18 +3,28 @@ import type {
   Coa,
   CoaCellStep,
   CostParams,
+  DayNightConfig,
   HexGridDto,
+  JourneyParams,
   RiskProfile,
   RiskType,
   RoutePlan,
   RouteRequest,
+  TemporalZoneCellEntry,
+  TimeWindow,
   WorldPoint,
 } from '@domain';
 import {
+  applyTemporalModifiers,
+  applyZoneOffsets,
   cellRiskCost,
+  DEFAULT_DAY_NIGHT,
+  DEFAULT_JOURNEY_PARAMS,
+  isTimeWindowActive,
   movementCost,
   RISK_TYPES,
   riskCostBreakdown,
+  speedModifiedProfile,
   toCellId,
   worldDistance,
 } from '@domain';
@@ -175,6 +185,71 @@ function precedes(a: HeapNode, b: HeapNode): boolean {
   return a.key < b.key || (a.key === b.key && a.seq < b.seq);
 }
 
+// --- Temporal context ------------------------------------------------------
+
+/** Groups time-related inputs for A* and buildCoa so signatures stay manageable. */
+interface TemporalContext {
+  journeyParams: JourneyParams;
+  dayNight: DayNightConfig;
+  temporalZoneCells: Record<CellId, TemporalZoneCellEntry[]>;
+  waypointWindows: (TimeWindow | null)[];
+  waypoints: readonly CellId[];
+}
+
+/** A no-op temporal context used in time-agnostic calls (TSP ordering etc.). */
+const EMPTY_TEMPORAL: TemporalContext = {
+  journeyParams: { startTime: 0, speedMode: 'fixed', fixedSpeedKmh: 15 },
+  dayNight: { enabled: false },
+  temporalZoneCells: {},
+  waypointWindows: [],
+  waypoints: [],
+};
+
+/** Apply temporal zone offsets to a profile based on arrival time. */
+function applyTemporalZoneCells(
+  profile: RiskProfile,
+  cellId: CellId,
+  arrivalTimeMin: number,
+  temporalZoneCells: Record<CellId, TemporalZoneCellEntry[]>,
+): RiskProfile {
+  const entries = temporalZoneCells[cellId];
+  if (!entries || entries.length === 0) return profile;
+  const offsets: Partial<Record<RiskType, number>> = {};
+  for (const entry of entries) {
+    if (isTimeWindowActive(entry.startTime, entry.endTime, arrivalTimeMin)) {
+      offsets[entry.risk] = (offsets[entry.risk] ?? 0) + entry.contribution;
+    }
+  }
+  return applyZoneOffsets(profile, offsets);
+}
+
+/** Full modifier chain: speed → day/night → temporal zones. */
+function applyAllModifiers(
+  profile: RiskProfile,
+  cellId: CellId,
+  arrivalTimeMin: number,
+  speed: number,
+  temporal: TemporalContext,
+): RiskProfile {
+  let p = speedModifiedProfile(profile, speed);
+  p = applyTemporalModifiers(p, arrivalTimeMin, temporal.dayNight);
+  p = applyTemporalZoneCells(p, cellId, arrivalTimeMin, temporal.temporalZoneCells);
+  return p;
+}
+
+/** Soft arrival-window penalty in cost units (steers A* without hard blocking). */
+function windowPenalty(
+  arrivalMin: number,
+  window: TimeWindow | null | undefined,
+  params: CostParams,
+): number {
+  if (!window) return 0;
+  const penaltyPerMin = params.riskWeight * 0.5;
+  const early = window.earliest !== undefined ? Math.max(0, window.earliest - arrivalMin) : 0;
+  const late = window.latest !== undefined ? Math.max(0, arrivalMin - window.latest) : 0;
+  return (early + late) * penaltyPerMin;
+}
+
 // --- Pathfinding -----------------------------------------------------------
 
 /**
@@ -182,8 +257,11 @@ function precedes(a: HeapNode, b: HeapNode): boolean {
  * already crossed by accepted COAs; `blocked` cells are not traversed (except the
  * destination, so a waypoint placed on blocked terrain stays reachable). The
  * heuristic — straight-line distance × distance weight — is a consistent lower
- * bound on remaining cost (risk and diversity only add), so no node is reopened.
- * Returns `null` if `dst` is unreachable.
+ * bound on remaining cost (risk, diversity and temporal effects only add), so no
+ * node is reopened. Returns `null` if `dst` is unreachable.
+ *
+ * Time tracking: `legStartDistKm` is the cumulative journey distance before this
+ * leg. Arrival time at each cell = startTime + (legStartDistKm + legDistKm) / speed * 60.
  */
 function aStar(
   graph: Graph,
@@ -192,6 +270,8 @@ function aStar(
   params: CostParams,
   usage: ReadonlyMap<CellId, number>,
   blocked: ReadonlySet<CellId>,
+  temporal: TemporalContext,
+  legStartDistKm: number,
 ): CellId[] | null {
   if (src === dst) return [src];
   const goalCenter = graph.centerOf(dst);
@@ -201,11 +281,17 @@ function aStar(
     return c ? worldDistance(c, goalCenter) * params.distanceWeightKm : 0;
   };
 
+  const speed = temporal.journeyParams.fixedSpeedKmh;
+
   const gScore = new Map<CellId, number>([[src, 0]]);
+  const travelDistKm = new Map<CellId, number>([[src, 0]]);
   const prev = new Map<CellId, CellId>();
   const closed = new Set<CellId>();
   const open = new MinHeap();
   open.push(heuristic(src), src);
+
+  // Find which waypoint index dst corresponds to (for window penalty).
+  const dstWaypointIdx = temporal.waypoints.indexOf(dst);
 
   while (open.size > 0) {
     const current = open.pop()!;
@@ -215,20 +301,39 @@ function aStar(
     const fromCenter = graph.centerOf(current);
     if (!fromCenter) continue;
     const gCurrent = gScore.get(current) ?? Infinity;
+    const distCurrent = travelDistKm.get(current) ?? 0;
 
     for (const next of graph.neighbors(current)) {
       if (closed.has(next)) continue;
       if (next !== dst && blocked.has(next)) continue;
       const toCenter = graph.centerOf(next);
       if (!toCenter) continue;
-      const base =
-        movementCost(worldDistance(fromCenter, toCenter), params) +
-        cellRiskCost(graph.riskAt(next), params);
+
+      const legDistKm = worldDistance(fromCenter, toCenter);
+      const newDistKm = distCurrent + legDistKm;
+      const arrivalMin =
+        temporal.journeyParams.startTime + ((legStartDistKm + newDistKm) / speed) * 60;
+
+      // Apply full modifier chain to get time-adjusted profile.
+      const profile = applyAllModifiers(graph.riskAt(next), next, arrivalMin, speed, temporal);
+
+      const base = movementCost(legDistKm, params) + cellRiskCost(profile, params);
       const uses = usage.get(next) ?? 0;
-      const edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
+      let edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
+
+      // Soft window penalty when this neighbour is the destination waypoint.
+      if (next === dst && dstWaypointIdx >= 0) {
+        edge += windowPenalty(
+          arrivalMin,
+          temporal.waypointWindows[dstWaypointIdx] ?? null,
+          params,
+        );
+      }
+
       const tentative = gCurrent + edge;
       if (tentative < (gScore.get(next) ?? Infinity)) {
         gScore.set(next, tentative);
+        travelDistKm.set(next, newDistKm);
         prev.set(next, current);
         open.push(tentative + heuristic(next), next);
       }
@@ -256,9 +361,28 @@ function leg(
   params: CostParams,
   usage: ReadonlyMap<CellId, number>,
   blocked: ReadonlySet<CellId>,
+  temporal: TemporalContext,
+  legStartDistKm: number,
 ): CellId[] {
-  const withBlocks = blocked.size > 0 ? aStar(graph, a, b, params, usage, blocked) : null;
-  return withBlocks ?? aStar(graph, a, b, params, usage, NO_BLOCKS) ?? [a, b];
+  const withBlocks =
+    blocked.size > 0
+      ? aStar(graph, a, b, params, usage, blocked, temporal, legStartDistKm)
+      : null;
+  return (
+    withBlocks ??
+    aStar(graph, a, b, params, usage, NO_BLOCKS, temporal, legStartDistKm) ?? [a, b]
+  );
+}
+
+/** Cumulative distance of a path in km. */
+function pathDistanceKm(path: CellId[], graph: Graph): number {
+  let dist = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = graph.centerOf(path[i - 1]!);
+    const b = graph.centerOf(path[i]!);
+    if (a && b) dist += worldDistance(a, b);
+  }
+  return dist;
 }
 
 /** Walk the waypoint sequence in order, concatenating each consecutive leg. */
@@ -268,11 +392,23 @@ function pathThroughSequence(
   params: CostParams,
   usage: ReadonlyMap<CellId, number>,
   blocked: ReadonlySet<CellId>,
+  temporal: TemporalContext,
 ): CellId[] {
   const full: CellId[] = [];
+  let cumulativeDistKm = 0;
   for (let i = 0; i < sequence.length - 1; i++) {
-    const seg = leg(graph, sequence[i]!, sequence[i + 1]!, params, usage, blocked);
+    const seg = leg(
+      graph,
+      sequence[i]!,
+      sequence[i + 1]!,
+      params,
+      usage,
+      blocked,
+      temporal,
+      cumulativeDistKm,
+    );
     full.push(...(i === 0 ? seg : seg.slice(1)));
+    cumulativeDistKm += pathDistanceKm(seg, graph);
   }
   return full;
 }
@@ -285,14 +421,18 @@ function buildCoa(
   path: CellId[],
   graph: Graph,
   params: CostParams,
+  temporal: TemporalContext,
 ): Coa {
   const steps: CoaCellStep[] = [];
   const riskTotals = zeroRisk();
   let totalCost = 0;
   let totalDistanceKm = 0;
+  const speed = temporal.journeyParams.fixedSpeedKmh;
+  const waypointArrivals: number[] = new Array(temporal.waypoints.length).fill(
+    temporal.journeyParams.startTime,
+  ) as number[];
 
   path.forEach((cellId, i) => {
-    const perRisk = riskCostBreakdown(graph.riskAt(cellId), params);
     let move = 0;
     if (i > 0) {
       const a = graph.centerOf(path[i - 1]!);
@@ -303,16 +443,42 @@ function buildCoa(
         move = movementCost(km, params);
       }
     }
+
+    const arrivalMin =
+      temporal.journeyParams.startTime + (totalDistanceKm / speed) * 60;
+
+    // Apply same modifier chain as A* for consistency.
+    const profile = applyAllModifiers(graph.riskAt(cellId), cellId, arrivalMin, speed, temporal);
+    const perRisk = riskCostBreakdown(profile, params);
+
     let stepCost = move;
     for (const r of RISK_TYPES) {
       riskTotals[r] += perRisk[r];
       stepCost += perRisk[r];
     }
     totalCost += stepCost;
-    steps.push({ cellId, perRisk, movementCost: move, stepCost });
+    steps.push({ cellId, perRisk, movementCost: move, stepCost, arrivalTimeMinutes: arrivalMin, speedKmh: speed });
+
+    // Record arrival time at each waypoint.
+    const wpIdx = temporal.waypoints.indexOf(cellId);
+    if (wpIdx >= 0) waypointArrivals[wpIdx] = arrivalMin;
   });
 
-  return { id, label, path, steps, totalCost, totalDistanceKm, riskTotals };
+  const lastArrival = steps[steps.length - 1]?.arrivalTimeMinutes ?? temporal.journeyParams.startTime;
+
+  return {
+    id,
+    label,
+    path,
+    steps,
+    totalCost,
+    totalDistanceKm,
+    riskTotals,
+    departureTimeMinutes: temporal.journeyParams.startTime,
+    arrivalTimeMinutes: lastArrival,
+    waypointArrivals,
+    speedKmh: speed,
+  };
 }
 
 /** Jaccard overlap (shared / union cells) between two paths. */
@@ -332,14 +498,16 @@ function overlap(a: ReadonlySet<CellId>, b: readonly CellId[]): number {
  * diversity and impassable concerns (those apply to the per-leg search later).
  */
 function legCost(graph: Graph, a: CellId, b: CellId, params: CostParams): number {
-  const path = aStar(graph, a, b, params, NO_USAGE, NO_BLOCKS);
+  const path = aStar(graph, a, b, params, NO_USAGE, NO_BLOCKS, EMPTY_TEMPORAL, 0);
   if (!path) return Infinity;
   let cost = 0;
   for (let i = 1; i < path.length; i++) {
     const from = graph.centerOf(path[i - 1]!);
     const to = graph.centerOf(path[i]!);
     if (from && to) {
-      cost += movementCost(worldDistance(from, to), params) + cellRiskCost(graph.riskAt(path[i]!), params);
+      cost +=
+        movementCost(worldDistance(from, to), params) +
+        cellRiskCost(graph.riskAt(path[i]!), params);
     }
   }
   return cost;
@@ -387,6 +555,14 @@ export function planRoutes(request: RouteRequest): RoutePlan {
     ? new Set(request.impassable)
     : NO_BLOCKS;
 
+  const temporal: TemporalContext = {
+    journeyParams: request.journeyParams ?? DEFAULT_JOURNEY_PARAMS,
+    dayNight: request.dayNight ?? DEFAULT_DAY_NIGHT,
+    temporalZoneCells: request.temporalZoneCells ?? {},
+    waypointWindows: request.waypointWindows ?? Array<TimeWindow | null>(request.waypoints.length).fill(null),
+    waypoints: request.waypoints,
+  };
+
   const usage = new Map<CellId, number>();
   const seen = new Set<string>();
   const accepted: { path: CellId[]; cells: Set<CellId> }[] = [];
@@ -415,23 +591,28 @@ export function planRoutes(request: RouteRequest): RoutePlan {
   //    genuinely distinct routes.
   for (const strategy of STRATEGIES) {
     if (accepted.length >= coaCount) break;
-    accept(pathThroughSequence(graph, sequence, scaleParams(params, strategy), NO_USAGE, blocked), true);
+    accept(
+      pathThroughSequence(graph, sequence, scaleParams(params, strategy), NO_USAGE, blocked, temporal),
+      true,
+    );
   }
 
   // 2) Fan out under the real params, penalising used cells, still preferring
   //    distinct routes.
   for (let guard = 0; accepted.length < coaCount && guard < coaCount + 2; guard++) {
-    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked), true)) break;
+    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), true)) break;
   }
 
   // 3) Fill: if the distinctness rule left us short but more exact alternatives
   //    exist, relax to exact-dedup so we still return up to `coaCount`.
   for (let guard = 0; accepted.length < coaCount && guard < coaCount + 2; guard++) {
-    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked), false)) break;
+    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), false)) break;
   }
 
   // Rank best-first under the real params, then label by rank.
-  const coas: Coa[] = accepted.map((a, i) => buildCoa(`coa-${i}`, 'route', a.path, graph, params));
+  const coas: Coa[] = accepted.map((a, i) =>
+    buildCoa(`coa-${i}`, 'route', a.path, graph, params, temporal),
+  );
   coas.sort((a, b) => a.totalCost - b.totalCost);
   coas.forEach((coa, i) => {
     coa.id = `coa-${i}`;

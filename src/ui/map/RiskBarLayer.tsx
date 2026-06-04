@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Pane, Polygon } from 'react-leaflet';
-import { applyZoneOffsets, effectiveProfile, riskCostBreakdown } from '@domain';
-import { useBlockbusterStore } from '@/state/store';
+import { riskCostBreakdown } from '@domain';
+import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { RISK_COLORS } from '@/ui/theme';
 import { worldRingToLatLng } from './projection';
 import { BAR_RADIUS_FRACTION, cellInradius, riskBarRects } from './pie';
@@ -20,14 +20,18 @@ export function RiskBarLayer() {
   const showRiskBars = useBlockbusterStore((s) => s.showRiskBars);
   const riskStates = useBlockbusterStore((s) => s.riskStates);
   const zoneContribution = useBlockbusterStore((s) => s.zoneContribution);
+  const zones = useBlockbusterStore((s) => s.zones);
+  const displayTime = useBlockbusterStore((s) => s.displayTime);
+  const dayNight = useBlockbusterStore((s) => s.dayNight);
+  const journeyParams = useBlockbusterStore((s) => s.journeyParams);
   const costParams = useBlockbusterStore((s) => s.costParams);
 
   const bars = useMemo(() => {
     if (!grid || !showRiskBars) return [];
+    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams };
     return grid.cells.flatMap((cell) => {
-      const state = riskStates.get(cell.id);
-      if (!state) return [];
-      const eff = applyZoneOffsets(effectiveProfile(state), zoneContribution.get(cell.id));
+      const eff = selectDisplayProfile(profileCtx, cell.id, cell.vertices);
+      if (!eff) return [];
       const breakdown = riskCostBreakdown(eff, costParams);
       const radius = cellInradius(cell.center, cell.vertices) * BAR_RADIUS_FRACTION;
       return riskBarRects(cell.center, radius, breakdown).map((rect) => ({
@@ -36,7 +40,7 @@ export function RiskBarLayer() {
         positions: worldRingToLatLng(rect.ring),
       }));
     });
-  }, [grid, showRiskBars, riskStates, zoneContribution, costParams]);
+  }, [grid, showRiskBars, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams]);
 
   if (bars.length === 0) return null;
 

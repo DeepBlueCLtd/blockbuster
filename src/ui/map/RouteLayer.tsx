@@ -1,7 +1,7 @@
-import { Marker, Pane, Polyline, Tooltip } from 'react-leaflet';
+import { CircleMarker, Marker, Pane, Polyline, Tooltip } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import type { LatLngExpression, LeafletEvent, Marker as LeafletMarker } from 'leaflet';
-import type { CellId } from '@domain';
+import type { CellId, CoaCellStep } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { COA_HALO_COLOR, coaColor } from '@/ui/theme';
 import { worldToLatLng } from './projection';
@@ -29,6 +29,14 @@ function waypointIcon(index: number, count: number) {
   });
 }
 
+/** Find the most recent step at or before `timeMin`, returning its cell id or null. */
+function positionAtTime(steps: CoaCellStep[], timeMin: number): CellId | null {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if ((steps[i]?.arrivalTimeMinutes ?? 0) <= timeMin) return steps[i]?.cellId ?? null;
+  }
+  return null;
+}
+
 /** Draws each COA as a polyline (selected one emphasised) plus draggable waypoint markers. */
 export function RouteLayer() {
   const grid = useBlockbusterStore((s) => s.grid);
@@ -36,6 +44,7 @@ export function RouteLayer() {
   const selectedCoaId = useBlockbusterStore((s) => s.selectedCoaId);
   const waypoints = useBlockbusterStore((s) => s.waypoints);
   const showRoutes = useBlockbusterStore((s) => s.showRoutes);
+  const displayTime = useBlockbusterStore((s) => s.displayTime);
 
   if (!grid || !showRoutes) return null;
 
@@ -68,12 +77,21 @@ export function RouteLayer() {
   // last so its thicker line sits above the rest. A light halo under every line
   // keeps the colours legible over whatever the map shows beneath them.
   const routes = (plan?.coas ?? [])
-    .map((coa, index) => ({
-      id: coa.id,
-      color: coaColor(index),
-      selected: coa.id === selectedCoaId,
-      points: toPoints(coa.path),
-    }))
+    .map((coa, index) => {
+      const inRange =
+        coa.arrivalTimeMinutes > coa.departureTimeMinutes &&
+        displayTime >= coa.departureTimeMinutes &&
+        displayTime <= coa.arrivalTimeMinutes;
+      const positionCellId = inRange ? positionAtTime(coa.steps, displayTime) : null;
+      const positionCenter = positionCellId ? grid.get(positionCellId)?.center : null;
+      return {
+        id: coa.id,
+        color: coaColor(index),
+        selected: coa.id === selectedCoaId,
+        points: toPoints(coa.path),
+        positionLatLng: positionCenter ? worldToLatLng(positionCenter) : null,
+      };
+    })
     .sort((a, b) => Number(a.selected) - Number(b.selected));
 
   return (
@@ -107,6 +125,22 @@ export function RouteLayer() {
             }}
           />
         ))}
+        {/* Current group position along each COA at displayTime. */}
+        {routes.map((route) =>
+          route.positionLatLng ? (
+            <CircleMarker
+              key={`pos-${route.id}`}
+              center={route.positionLatLng}
+              radius={8}
+              pathOptions={{
+                color: '#ffffff',
+                weight: 2,
+                fillColor: route.color,
+                fillOpacity: 1,
+              }}
+            />
+          ) : null,
+        )}
       </Pane>
 
       {waypoints.map((id, index) => {

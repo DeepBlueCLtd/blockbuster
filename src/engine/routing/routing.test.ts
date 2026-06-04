@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { CellId, CostParams, HexGridDto, RiskProfile, RouteRequest } from '@domain';
-import { DEFAULT_COST_PARAMS, riskCostBreakdown, RISK_TYPES, toCellId } from '@domain';
+import {
+  DEFAULT_COST_PARAMS,
+  DEFAULT_JOURNEY_PARAMS,
+  riskCostBreakdown,
+  RISK_TYPES,
+  speedModifiedProfile,
+  toCellId,
+} from '@domain';
 import { planRoutes } from './planner.core';
 import { createRoutePlanner } from './index';
 import { fixtureRequest, fixtureWaypoints } from '@/mocks/fixtures';
@@ -91,9 +98,12 @@ describe('routing core (spec)', () => {
 
   it('per-risk costs match @domain/cost.riskCostBreakdown for the params', () => {
     const params = fixtureRequest.params;
+    const speedKmh = (fixtureRequest.journeyParams ?? DEFAULT_JOURNEY_PARAMS).fixedSpeedKmh;
     for (const coa of plan.coas) {
       for (const step of coa.steps) {
-        const expected = riskCostBreakdown(fixtureRequest.risk[step.cellId]!, params);
+        // The planner applies speed modifiers before costing — match that here.
+        const modifiedProfile = speedModifiedProfile(fixtureRequest.risk[step.cellId]!, speedKmh);
+        const expected = riskCostBreakdown(modifiedProfile, params);
         for (const r of RISK_TYPES) expect(step.perRisk[r]).toBeCloseTo(expected[r], 9);
         const riskSum = RISK_TYPES.reduce((s, r) => s + step.perRisk[r], 0);
         expect(step.stepCost).toBeCloseTo(step.movementCost + riskSum, 9);

@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react';
-import { RISK_LABELS, RISK_TYPES, type RiskType } from '@domain';
+import { RISK_LABELS, RISK_TYPES, SPEED_MAX_KMH, SPEED_MIN_KMH, type RiskType } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { coaColor, RISK_COLORS } from '@/ui/theme';
+import { formatTime } from '@/ui/utils/time';
 import { Slider } from '@/ui/components/Slider';
 import { StackedBarChart } from './charts/StackedBarChart';
 
@@ -27,6 +28,7 @@ export function CoaPanel() {
 
   return (
     <div className="panel coa-panel">
+      <JourneySettings />
       <AppetiteSliders />
       {!hasPlan ? (
         <p className="panel-hint">
@@ -48,6 +50,12 @@ export function CoaPanel() {
                 {coa.totalCost.toFixed(0)} cost · {coa.totalDistanceKm.toFixed(1)} km ·{' '}
                 {coa.path.length} cells
               </span>
+              {coa.arrivalTimeMinutes > coa.departureTimeMinutes && (
+                <span className="coa-timing">
+                  {formatTime(coa.departureTimeMinutes)} → {formatTime(coa.arrivalTimeMinutes)}
+                  {coa.speedKmh !== null && ` · ${coa.speedKmh} km/h`}
+                </span>
+              )}
             </header>
             <StackedBarChart
               coa={coa}
@@ -65,6 +73,69 @@ export function CoaPanel() {
 /** Total risk cost a cell contributes — the bar height the chart draws for it. */
 function riskTotal(perRisk: Record<RiskType, number>): number {
   return RISK_TYPES.reduce((sum, risk) => sum + perRisk[risk], 0);
+}
+
+/** Journey-time controls: departure time, speed mode and day/night toggle. */
+function JourneySettings() {
+  const journeyParams = useBlockbusterStore((s) => s.journeyParams);
+  const setJourneyParams = useBlockbusterStore((s) => s.setJourneyParams);
+  const dayNight = useBlockbusterStore((s) => s.dayNight);
+  const setDayNight = useBlockbusterStore((s) => s.setDayNight);
+
+  return (
+    <section className="journey-settings">
+      <h2 className="appetite-title">Journey</h2>
+      <label className="journey-field">
+        Depart {formatTime(journeyParams.startTime)}
+        <input
+          type="range"
+          min={0}
+          max={1439}
+          step={15}
+          value={journeyParams.startTime}
+          onChange={(e) => setJourneyParams({ startTime: Number(e.target.value) })}
+        />
+      </label>
+      <label className="journey-field">
+        Speed mode
+        <select
+          value={journeyParams.speedMode}
+          onChange={(e) =>
+            setJourneyParams({ speedMode: e.target.value as typeof journeyParams.speedMode })
+          }
+        >
+          <option value="fixed">Fixed speed</option>
+          <option value="optimal" disabled>
+            Optimal speed
+          </option>
+          <option value="dynamic" disabled>
+            Dynamic speed
+          </option>
+        </select>
+      </label>
+      {journeyParams.speedMode === 'fixed' && (
+        <label className="journey-field">
+          Speed {journeyParams.fixedSpeedKmh} km/h
+          <input
+            type="range"
+            min={SPEED_MIN_KMH}
+            max={SPEED_MAX_KMH}
+            step={1}
+            value={journeyParams.fixedSpeedKmh}
+            onChange={(e) => setJourneyParams({ fixedSpeedKmh: Number(e.target.value) })}
+          />
+        </label>
+      )}
+      <label className="journey-field journey-checkbox">
+        <input
+          type="checkbox"
+          checked={dayNight.enabled}
+          onChange={(e) => setDayNight({ enabled: e.target.checked })}
+        />
+        Day/night risk variation
+      </label>
+    </section>
+  );
 }
 
 /**

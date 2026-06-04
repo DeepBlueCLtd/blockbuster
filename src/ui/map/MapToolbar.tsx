@@ -1,6 +1,7 @@
 import { RISK_LABELS, RISK_TYPES } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import type { DisplayRisk } from '@/state/types';
+import { formatTime } from '@/ui/utils/time';
 
 /** Floating controls over the map: layer toggles, what to shade by, hex size, live stats. */
 export function MapToolbar() {
@@ -22,6 +23,8 @@ export function MapToolbar() {
   const setHexSize = useBlockbusterStore((s) => s.setHexSize);
   const planning = useBlockbusterStore((s) => s.planning);
   const cellCount = useBlockbusterStore((s) => s.grid?.cells.length ?? 0);
+  const displayTime = useBlockbusterStore((s) => s.displayTime);
+  const setDisplayTime = useBlockbusterStore((s) => s.setDisplayTime);
 
   return (
     <div className="map-toolbar">
@@ -99,6 +102,17 @@ export function MapToolbar() {
           step={0.2}
           value={hexSize}
           onChange={(event) => setHexSize(Number(event.target.value))}
+        />
+      </label>
+      <label>
+        Time {formatTime(displayTime)}
+        <input
+          type="range"
+          min={0}
+          max={1439}
+          step={15}
+          value={displayTime}
+          onChange={(event) => setDisplayTime(Number(event.target.value))}
         />
       </label>
       <span className="map-stat">

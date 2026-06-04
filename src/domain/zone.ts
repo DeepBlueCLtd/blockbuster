@@ -20,6 +20,10 @@ export const ZONE_OFFSET_MAX = 0.5;
  * Geometry is an open ring in world kilometres (the closing vertex is NOT
  * duplicated). Rectangles and circles are normalised to a ring on capture so all
  * three kinds share one geometry path.
+ *
+ * When `startTime` or `endTime` are set, the zone is only active during that
+ * window (minutes from midnight). This is used for time-bounded hazards like
+ * storm bands. Always-active zones omit both fields.
  */
 export interface RiskZone {
   id: string;
@@ -34,11 +38,36 @@ export interface RiskZone {
   ring: WorldPoint[];
   /** Whether this zone contributes to risk scoring. Defaults to true. */
   enabled: boolean;
+  /** Optional: zone is inactive before this time (minutes from midnight). */
+  startTime?: number;
+  /** Optional: zone is inactive after this time (minutes from midnight). */
+  endTime?: number;
 }
 
 /** Clamp an offset into the allowed signed range. */
 export function clampZoneOffset(value: number): number {
   return clamp(value, ZONE_OFFSET_MIN, ZONE_OFFSET_MAX);
+}
+
+/**
+ * Whether a zone's time window includes the given wall-clock time.
+ * Zones with no time bounds are always active.
+ * Handles wrap-around windows (e.g. 22:00–06:00 spans midnight).
+ */
+export function isTimeWindowActive(
+  startTime: number | undefined,
+  endTime: number | undefined,
+  timeMinutes: number,
+): boolean {
+  if (startTime === undefined && endTime === undefined) return true;
+  const s = startTime ?? 0;
+  const e = endTime ?? 1439;
+  return s <= e ? timeMinutes >= s && timeMinutes <= e : timeMinutes >= s || timeMinutes <= e;
+}
+
+/** Whether a {@link RiskZone}'s time window is active at the given time. */
+export function isZoneActiveAt(zone: RiskZone, timeMinutes: number): boolean {
+  return isTimeWindowActive(zone.startTime, zone.endTime, timeMinutes);
 }
 
 /**

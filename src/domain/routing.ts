@@ -2,6 +2,20 @@ import type { Km } from './units';
 import type { CellId, HexGridDto } from './hex';
 import type { RiskProfile, RiskType } from './risk';
 import type { CostParams } from './cost';
+import type { JourneyParams, DayNightConfig, TimeWindow } from './journey';
+
+/**
+ * Pre-computed contribution of a single temporal zone for one cell.
+ * The routing worker uses these (alongside arrival time) to apply time-bounded
+ * zone effects per step — structured-clone safe, no closures.
+ */
+export interface TemporalZoneCellEntry {
+  risk: RiskType;
+  /** Pre-computed: coverageFraction × zone.offset (signed). */
+  contribution: number;
+  startTime?: number; // minutes from midnight
+  endTime?: number; // minutes from midnight
+}
 
 /**
  * Everything the routing engine needs, in structured-clone-friendly form so it
@@ -9,7 +23,7 @@ import type { CostParams } from './cost';
  */
 export interface RouteRequest {
   grid: HexGridDto;
-  /** Effective (post-override) risk profile for every cell, keyed by id. */
+  /** Effective (post-override, always-active-zone) risk profile for every cell, keyed by id. */
   risk: Record<CellId, RiskProfile>;
   params: CostParams;
   /** Ordered list of cells the route must visit; length ≥ 2. */
@@ -32,6 +46,21 @@ export interface RouteRequest {
    * difficult terrain is discouraged by cost rather than blocked).
    */
   impassable?: CellId[];
+  /** Departure time and speed mode for this planning run. Defaults to DEFAULT_JOURNEY_PARAMS. */
+  journeyParams?: JourneyParams;
+  /** Whether day/night risk modifiers are active. Defaults to DEFAULT_DAY_NIGHT. */
+  dayNight?: DayNightConfig;
+  /**
+   * Pre-computed per-cell temporal zone contributions (coverage × offset per
+   * zone–time-window). Only cells with non-zero temporal zone coverage appear.
+   * Applied per step inside the worker at the cell's arrival time.
+   */
+  temporalZoneCells?: Record<CellId, TemporalZoneCellEntry[]>;
+  /**
+   * Optional earliest/latest arrival time per waypoint (parallel to `waypoints`).
+   * Violations incur a soft cost penalty rather than hard blocking.
+   */
+  waypointWindows?: (TimeWindow | null)[];
 }
 
 /** One cell along a COA, with the cost it contributed, split by risk channel. */
@@ -43,6 +72,10 @@ export interface CoaCellStep {
   movementCost: number;
   /** Total cost contribution of this step (risk + movement). */
   stepCost: number;
+  /** Absolute wall-clock time (minutes from midnight) when the group enters this cell. */
+  arrivalTimeMinutes: number;
+  /** Travel speed (km/h) used for this cell. */
+  speedKmh: number;
 }
 
 /**
@@ -61,6 +94,14 @@ export interface Coa {
   totalDistanceKm: Km;
   /** Aggregate exposure per risk channel across the whole route. */
   riskTotals: Record<RiskType, number>;
+  /** Departure time (minutes from midnight) — equals journeyParams.startTime. */
+  departureTimeMinutes: number;
+  /** Estimated arrival time at the final waypoint (minutes from midnight). */
+  arrivalTimeMinutes: number;
+  /** Arrival time at each requested waypoint, parallel to request.waypoints. */
+  waypointArrivals: number[];
+  /** Constant travel speed for the whole route, or null if Dynamic (varies per cell). */
+  speedKmh: number | null;
 }
 
 /** Result of a planning run: the COAs, best-first, plus provenance. */

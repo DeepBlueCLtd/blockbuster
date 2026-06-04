@@ -2,6 +2,9 @@ import type { Km } from './units';
 import type { RiskAppetite, RiskProfile, RiskType } from './risk';
 import { RISK_TYPES } from './risk';
 import { DEFAULT_APPETITE } from './risk';
+import { clamp01 } from './units';
+import type { DayNightConfig } from './journey';
+import { SPEED_MIN_KMH, SPEED_MAX_KMH, NIGHT_START, NIGHT_END } from './journey';
 
 /**
  * Parameters of the traversal cost function. This is shared kernel on purpose:
@@ -59,4 +62,67 @@ export function cellRiskCost(profile: RiskProfile, params: CostParams): number {
 /** Cost of moving `distanceKm` between two cell centres. */
 export function movementCost(distanceKm: Km, params: CostParams): number {
   return distanceKm * params.distanceWeightKm;
+}
+
+/**
+ * Speed-dependent multiplier on a risk channel.
+ * Faster travel: animals ×0.5, human ×0.5 at max speed (safer — harder to catch).
+ * Faster travel: cold ×2.0 at max speed (wind chill / ice vulnerability).
+ * Heat and water are unaffected.
+ */
+export function speedRiskModifier(riskType: RiskType, speedKmh: number): number {
+  const t = (speedKmh - SPEED_MIN_KMH) / (SPEED_MAX_KMH - SPEED_MIN_KMH);
+  switch (riskType) {
+    case 'animals':
+      return 1 - 0.5 * t;
+    case 'human':
+      return 1 - 0.5 * t;
+    case 'cold':
+      return 1 + 1.0 * t;
+    default:
+      return 1;
+  }
+}
+
+/** Apply speed modifiers to a profile; returns a new object, clamped to [0, 1]. */
+export function speedModifiedProfile(profile: RiskProfile, speedKmh: number): RiskProfile {
+  const out = {} as RiskProfile;
+  for (const risk of RISK_TYPES) {
+    out[risk] = clamp01(profile[risk] * speedRiskModifier(risk, speedKmh));
+  }
+  return out;
+}
+
+/**
+ * Day/night multiplier on a risk channel.
+ * Night window = NIGHT_START (20:00) through NIGHT_END (06:00), wrapping midnight.
+ * Animals ×0.5 at night; human ×1.5 at night; others unchanged.
+ */
+export function dayNightModifier(riskType: RiskType, timeMinutes: number): number {
+  const isNight = timeMinutes >= NIGHT_START || timeMinutes < NIGHT_END;
+  switch (riskType) {
+    case 'animals':
+      return isNight ? 0.5 : 1;
+    case 'human':
+      return isNight ? 1.5 : 1;
+    default:
+      return 1;
+  }
+}
+
+/**
+ * Apply day/night multipliers to a profile; returns a new object, clamped to [0, 1].
+ * Returns the input profile unchanged when `config.enabled` is false.
+ */
+export function applyTemporalModifiers(
+  profile: RiskProfile,
+  timeMinutes: number,
+  config: DayNightConfig,
+): RiskProfile {
+  if (!config.enabled) return profile;
+  const out = {} as RiskProfile;
+  for (const risk of RISK_TYPES) {
+    out[risk] = clamp01(profile[risk] * dayNightModifier(risk, timeMinutes));
+  }
+  return out;
 }
