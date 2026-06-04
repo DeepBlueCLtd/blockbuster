@@ -11,9 +11,8 @@ export function CoaPanel() {
   const planning = useBlockbusterStore((s) => s.planning);
   const selectedCoaId = useBlockbusterStore((s) => s.selectedCoaId);
   const selectCoa = useBlockbusterStore((s) => s.selectCoa);
-  const selectedCellId = useBlockbusterStore((s) => s.selectedCellId);
+  const hoveredCellId = useBlockbusterStore((s) => s.hoveredCellId);
   const hoverCell = useBlockbusterStore((s) => s.hoverCell);
-  const selectCell = useBlockbusterStore((s) => s.selectCell);
 
   const hasPlan = !!plan && plan.coas.length > 0;
   // Charts draw only the risk breakdown (movement cost drives routing but is
@@ -53,9 +52,8 @@ export function CoaPanel() {
             <StackedBarChart
               coa={coa}
               maxRiskCost={maxRisk}
-              selectedCellId={selectedCellId}
+              highlightedCellId={hoveredCellId}
               onHoverCell={hoverCell}
-              onSelectCell={selectCell}
             />
           </section>
         ))
