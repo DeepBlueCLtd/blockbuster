@@ -430,6 +430,22 @@ button:hover {
   display: block;
 }
 
+/* Wrapper used in time-axis mode (SVG + axis label row). */
+.coa-chart-timed {
+  display: flex;
+  flex-direction: column;
+}
+
+.coa-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 2px 0;
+  line-height: 1.2;
+}
+
 .coa-bar {
   cursor: pointer;
 }

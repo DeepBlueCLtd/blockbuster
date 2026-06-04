@@ -25,6 +25,11 @@ export function CoaPanel() {
         0,
       )
     : 0;
+  // Shared time axis: earliest departure and latest arrival across all COAs.
+  // When no COA has timing data (arrivalTime === departureTime), both stay 0
+  // and the charts fall back to equal-width mode automatically.
+  const timeStart = hasPlan ? Math.min(...plan.coas.map((c) => c.departureTimeMinutes)) : 0;
+  const timeEnd = hasPlan ? Math.max(...plan.coas.map((c) => c.arrivalTimeMinutes)) : 0;
 
   return (
     <div className="panel coa-panel">
@@ -64,6 +69,8 @@ export function CoaPanel() {
               maxRiskCost={maxRisk}
               highlightedCellId={hoveredCellId}
               onHoverCell={hoverCell}
+              timeStart={timeStart}
+              timeEnd={timeEnd}
             />
           </section>
         ))
