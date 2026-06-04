@@ -63,8 +63,14 @@ export function HexGridLayer() {
             positions={worldRingToLatLng(cell.vertices)}
             eventHandlers={handlers}
             pathOptions={{
-              color: isSelected ? '#111' : isWaypoint ? '#0d47a1' : 'rgba(60,60,60,0.35)',
-              weight: isSelected || isWaypoint ? 3 : isHovered ? 2 : 1,
+              color: isHovered
+                ? '#111'
+                : isSelected
+                  ? '#111'
+                  : isWaypoint
+                    ? '#0d47a1'
+                    : 'rgba(60,60,60,0.35)',
+              weight: isHovered ? 4 : isSelected || isWaypoint ? 3 : 1,
               fillColor: heatColor(intensity),
               fillOpacity: isHovered ? 0.75 : 0.55,
             }}
