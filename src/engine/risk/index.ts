@@ -36,7 +36,7 @@ const WATER_BIOME_NUDGE: Partial<Record<Biome, number>> = {
   savannah: 0.1,
   mountains: 0.1,
 };
-const THIEF_TOWN_NUDGE = 0.2;
+const HUMAN_TOWN_NUDGE = 0.2;
 
 export function createRiskEngine(): RiskEngine {
   return {
@@ -57,7 +57,7 @@ export function createRiskEngine(): RiskEngine {
         // Thirst risk is the lack of nearby water, drier in arid/high biomes.
         water: clamp01(1 - waterProximity + (WATER_BIOME_NUDGE[biome] ?? 0)),
         // Banditry tracks the settlement field and peaks in towns.
-        thief: clamp01(banditActivity + (biome === 'town' ? THIEF_TOWN_NUDGE : 0)),
+        human: clamp01(banditActivity + (biome === 'town' ? HUMAN_TOWN_NUDGE : 0)),
       };
     },
   };

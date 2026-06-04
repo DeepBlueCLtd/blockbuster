@@ -7,7 +7,7 @@ export const RISK_COLORS: Record<RiskType, string> = {
   cold: '#4fc3f7',
   heat: '#ff7043',
   water: '#ffd54f',
-  thief: '#7e57c2',
+  human: '#7e57c2',
 };
 
 /**

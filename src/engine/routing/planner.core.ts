@@ -92,7 +92,7 @@ interface Graph {
   riskAt(id: CellId): RiskProfile;
 }
 
-const ZERO_PROFILE: RiskProfile = { animals: 0, cold: 0, heat: 0, water: 0, thief: 0 };
+const ZERO_PROFILE: RiskProfile = { animals: 0, cold: 0, heat: 0, water: 0, human: 0 };
 
 function buildGraph(dto: HexGridDto, risk: Record<CellId, RiskProfile>): Graph {
   const center = new Map<CellId, WorldPoint>();

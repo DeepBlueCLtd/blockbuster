@@ -55,12 +55,12 @@ describe('risk (spec)', () => {
     expect(water(0.5)).toBeGreaterThan(water(1));
   });
 
-  it('thief risk tracks banditActivity and town biome', () => {
-    const thief = (b: number, biome: Biome = 'grassland') =>
-      engine.baseProfile(sample({ banditActivity: b, biome })).thief;
-    expect(thief(0.8)).toBeGreaterThan(thief(0.2));
-    // A town bumps thief risk above the same banditActivity elsewhere.
-    expect(thief(0.4, 'town')).toBeGreaterThan(thief(0.4, 'grassland'));
+  it('human risk tracks banditActivity and town biome', () => {
+    const human = (b: number, biome: Biome = 'grassland') =>
+      engine.baseProfile(sample({ banditActivity: b, biome })).human;
+    expect(human(0.8)).toBeGreaterThan(human(0.2));
+    // A town bumps human risk above the same banditActivity elsewhere.
+    expect(human(0.4, 'town')).toBeGreaterThan(human(0.4, 'grassland'));
   });
 
   it('animals risk tracks vegetation', () => {

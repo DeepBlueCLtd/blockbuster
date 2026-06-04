@@ -32,7 +32,7 @@ export function Slider({
   // Drive the track fill ourselves (CSS vars) rather than via `accent-color`:
   // the browser auto-derives the *empty* track shade from the accent's luminance,
   // which made bright channels (cold/heat/water) get a dark empty track while
-  // darker ones (animals/thieves) stayed light grey. A gradient keeps it uniform.
+  // darker ones (animals/humans) stayed light grey. A gradient keeps it uniform.
   const percent = max > min ? ((value - min) / (max - min)) * 100 : 0;
   const inputStyle = {
     '--slider-fill': `${percent}%`,
