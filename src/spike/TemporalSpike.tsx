@@ -1,7 +1,7 @@
 /**
  * THROWAWAY SPIKE — windowed temporal stack with a vertical time-wheel.
  *
- * The data is sliced at a chosen interval (5 min … 3 h); a fixed **window of 24
+ * The data is sliced at a chosen interval (5 min … 3 h); a fixed **window of 20
  * layers** centred on the current slice is shown, and the wheel scrolls the
  * current time. Stack and Grid are two renderings of that same window; the wheel
  * scrolls whichever is active. Only the window (+a small buffer) is built and
@@ -34,7 +34,7 @@ import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { formatTime } from '@/ui/utils/time';
 
 const DAY_MIN = 1440;
-const WINDOW = 24; // layers shown at once (= the 6×4 grid)
+const WINDOW = 20; // layers shown at once (= the 5×4 grid)
 const BUFFER = 4; // extra slices kept cached either side of the window
 const INTERVAL_OPTIONS = [5, 15, 30, 60, 180] as const;
 
@@ -42,11 +42,12 @@ const BASE_OVERHANG = 1.08;
 const STACK_START = 2; // window's bottom layer sits this many `spacing` units above the base
 const STACK_CAM: readonly [number, number, number] = [62, 48, 80];
 
-const GRID_COLS = 6;
+const GRID_COLS = 5; // odd, so the current sits in a true central column
 const GRID_ROWS = 4;
 const GRID_GAP = 6; // km between tiles
 const GRID_TILT = 0.25; // z-offset as a fraction of height — a gentle bird's-eye, off the gimbal
-const FIXED_CELL = GRID_COLS + 3; // where the current slice pins in "fixed cell" grid scroll
+const FIXED_CELL = GRID_COLS + 2; // current pins to the central column (col 2), row 1
+const PAN_X_GRID = 40; // shift the grid right (km) so its left column clears the control panel
 
 const DELTA_FRAC = 0.4; // composite temporal Δ reaches full colour at this fraction of the base max
 
@@ -266,6 +267,35 @@ function getLabel(text: string): THREE.CanvasTexture {
   return tex;
 }
 
+/** A bold rectangular ring (band of width `t`) around the tile footprint. */
+function frameBandGeometry(ext: WorldExtent, t: number): THREE.BufferGeometry {
+  const w = ext.width / 2;
+  const h = ext.height / 2;
+  const W = w + t;
+  const H = h + t;
+  const y = 0.25;
+  const pos: number[] = [];
+  const quad = (
+    ax: number,
+    az: number,
+    bx: number,
+    bz: number,
+    cx: number,
+    cz: number,
+    dx: number,
+    dz: number,
+  ) => {
+    pos.push(ax, y, az, bx, y, bz, cx, y, cz, ax, y, az, cx, y, cz, dx, y, dz);
+  };
+  quad(-W, -H, W, -H, W, -h, -W, -h); // south
+  quad(-W, h, W, h, W, H, -W, H); // north
+  quad(-W, -h, -w, -h, -w, h, -W, h); // west
+  quad(w, -h, W, -h, W, h, w, h); // east
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  return g;
+}
+
 /** three's OrbitControls, wrapped for R3F. Eases the camera across the morph. */
 function Orbit({
   layout,
@@ -274,7 +304,6 @@ function Orbit({
   gridCamHeight,
   gridTargetZ,
   stackTargetY,
-  autoRotate,
 }: {
   layout: Layout;
   transitioning: boolean;
@@ -282,7 +311,6 @@ function Orbit({
   gridCamHeight: number;
   gridTargetZ: number;
   stackTargetY: number;
-  autoRotate: boolean;
 }) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -297,7 +325,6 @@ function Orbit({
     const controls = new OrbitControls(camera, gl.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.autoRotateSpeed = 0.8;
     ref.current = controls;
     return () => controls.dispose();
   }, [camera, gl]);
@@ -305,9 +332,10 @@ function Orbit({
   useEffect(() => {
     const controls = ref.current;
     if (!controls || transitioning) return;
+    controls.enableRotate = false; // rotation dropped — orbit limited to pan + zoom
     if (layout === 'grid') {
-      camera.position.set(0, gridCamHeight, gridTargetZ + gridCamHeight * GRID_TILT);
-      controls.target.set(0, 0, gridTargetZ);
+      camera.position.set(-PAN_X_GRID, gridCamHeight, gridTargetZ + gridCamHeight * GRID_TILT);
+      controls.target.set(-PAN_X_GRID, 0, gridTargetZ);
     } else {
       controls.target.set(0, stackTargetY, 0);
     }
@@ -331,22 +359,20 @@ function Orbit({
       const toPos =
         layout === 'stack'
           ? new THREE.Vector3(STACK_CAM[0], STACK_CAM[1], STACK_CAM[2])
-          : new THREE.Vector3(0, gridCamHeight, gridTargetZ + gridCamHeight * GRID_TILT);
+          : new THREE.Vector3(-PAN_X_GRID, gridCamHeight, gridTargetZ + gridCamHeight * GRID_TILT);
       const toTarget =
         layout === 'stack'
           ? new THREE.Vector3(0, stackTargetY, 0)
-          : new THREE.Vector3(0, 0, gridTargetZ);
+          : new THREE.Vector3(-PAN_X_GRID, 0, gridTargetZ);
       camera.position.lerpVectors(fromPos.current, toPos, p);
       controls.target.lerpVectors(fromTarget.current, toTarget, p);
       const cam = camera as THREE.OrthographicCamera;
       cam.zoom = lerp(fromZoom.current, orthoZoom(toPos.distanceTo(toTarget)), p);
       cam.updateProjectionMatrix();
       controls.enabled = false;
-      controls.autoRotate = false;
     } else {
       animating.current = false;
       controls.enabled = true;
-      controls.autoRotate = layout === 'stack' && autoRotate;
     }
     controls.update();
   });
@@ -377,12 +403,12 @@ function Scene({
   temporal,
   showPermanent,
   showGround,
+  singleMap,
   morph,
   scrollCenter,
   half,
   currentSlice,
   windowStart,
-  gridScroll,
   intervalMin,
   frameGeo,
 }: {
@@ -395,12 +421,12 @@ function Scene({
   temporal: boolean;
   showPermanent: boolean;
   showGround: boolean;
+  singleMap: boolean;
   morph: number;
   scrollCenter: number;
   half: number;
   currentSlice: number;
   windowStart: number;
-  gridScroll: GridScroll;
   intervalMin: number;
   frameGeo: THREE.BufferGeometry;
 }) {
@@ -424,14 +450,14 @@ function Scene({
 
       {layers.map(({ index, geometry }) => {
         const isCurrent = index === currentSlice;
-        const cell = gridScroll === 'fixed' ? index - currentSlice + FIXED_CELL : index - windowStart;
+        const cell = index - windowStart;
         const gridValid = cell >= 0 && cell < GRID_COLS * GRID_ROWS;
         const [gx, gz] = gridValid ? gridTileXZ(cell, extent) : [0, 0];
         const stackY = (STACK_START + (index - scrollCenter + half)) * spacing;
         const px = lerp(gx, 0, m);
         const py = lerp(0, stackY, m);
         const pz = lerp(gz, 0, m);
-        const stackOp = isCurrent ? 1 : opacity;
+        const stackOp = isCurrent ? 1 : singleMap ? 0 : opacity;
         const gridOp = gridValid ? 1 : 0;
         const op = lerp(gridOp, stackOp, m);
         if (op <= 0.002 && !isCurrent) return null;
@@ -447,9 +473,16 @@ function Scene({
               />
             </mesh>
             {isCurrent && (
-              <lineLoop geometry={frameGeo}>
-                <lineBasicMaterial color="#cfe0f2" transparent opacity={0.85} depthTest={false} />
-              </lineLoop>
+              <mesh geometry={frameGeo}>
+                <meshBasicMaterial
+                  color="#cfe0f2"
+                  transparent
+                  opacity={0.95}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                  depthTest={false}
+                />
+              </mesh>
             )}
             <sprite position={[0, 2, -extent.height / 2 - 2.2]} scale={[16, 4, 1]}>
               <spriteMaterial
@@ -466,37 +499,92 @@ function Scene({
   );
 }
 
-/** Vertical reel: drag ↕ or mouse-wheel to scroll the current time. */
+/** Vertical reel with interval selector: drag/flick or mouse-wheel to scroll time. */
 function TimeWheel({
   currentMin,
   setCurrentMin,
   intervalMin,
+  setIntervalMin,
 }: {
   currentMin: number;
   setCurrentMin: (m: number) => void;
   intervalMin: number;
+  setIntervalMin: (m: number) => void;
 }) {
-  const drag = useRef<{ y: number; min: number } | null>(null);
   const maxMin = DAY_MIN - intervalMin;
   const clampMin = (mn: number) => clampN(mn, 0, maxMin);
-  const PX = 44; // pixels per slice while dragging
+  const PX = 44; // pixels per slice
+  const drag = useRef<{ y: number; min: number; lastY: number; lastT: number; v: number } | null>(
+    null,
+  );
+  const inertiaRaf = useRef(0);
+  const curRef = useRef(currentMin);
+  curRef.current = currentMin;
+
+  const stopInertia = () => {
+    if (inertiaRaf.current) {
+      cancelAnimationFrame(inertiaRaf.current);
+      inertiaRaf.current = 0;
+    }
+  };
+  useEffect(() => stopInertia, []);
+
   const onDown = (e: ReactPointerEvent) => {
-    drag.current = { y: e.clientY, min: currentMin };
+    stopInertia();
+    drag.current = { y: e.clientY, min: currentMin, lastY: e.clientY, lastT: performance.now(), v: 0 };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onMove = (e: ReactPointerEvent) => {
     if (!drag.current) return;
-    const dy = e.clientY - drag.current.y;
-    setCurrentMin(clampMin(drag.current.min - (dy / PX) * intervalMin));
+    const now = performance.now();
+    setCurrentMin(clampMin(drag.current.min - ((e.clientY - drag.current.y) / PX) * intervalMin));
+    const dt = Math.max(1, now - drag.current.lastT);
+    drag.current.v = (-(e.clientY - drag.current.lastY) / PX) * (intervalMin / dt); // min per ms
+    drag.current.lastY = e.clientY;
+    drag.current.lastT = now;
   };
   const onUp = () => {
-    if (drag.current) {
-      setCurrentMin(clampMin(Math.round(currentMin / intervalMin) * intervalMin));
-      drag.current = null;
+    const d = drag.current;
+    drag.current = null;
+    if (!d) return;
+    // No momentum if the pointer was held still just before release.
+    let v = performance.now() - d.lastT > 80 ? 0 : d.v;
+    if (Math.abs(v) <= 0.01) {
+      setCurrentMin(clampMin(Math.round(curRef.current / intervalMin) * intervalMin));
+      return;
     }
+    let last = performance.now();
+    const step = () => {
+      const now = performance.now();
+      const dt = now - last;
+      last = now;
+      let next = curRef.current + v * dt;
+      let stop = false;
+      if (next <= 0) {
+        next = 0;
+        stop = true;
+      } else if (next >= maxMin) {
+        next = maxMin;
+        stop = true;
+      }
+      curRef.current = next;
+      setCurrentMin(next);
+      v *= Math.pow(0.94, dt / 16); // friction
+      if (!stop && Math.abs(v) > 0.005) {
+        inertiaRaf.current = requestAnimationFrame(step);
+      } else {
+        setCurrentMin(clampMin(Math.round(next / intervalMin) * intervalMin));
+        inertiaRaf.current = 0;
+      }
+    };
+    inertiaRaf.current = requestAnimationFrame(step);
   };
   const onWheel = (e: ReactWheelEvent) => {
-    setCurrentMin(clampMin(currentMin + Math.sign(e.deltaY) * intervalMin));
+    stopInertia();
+    const i = INTERVAL_OPTIONS.findIndex((x) => x === intervalMin);
+    const ni = clampN((i < 0 ? 1 : i) + Math.sign(e.deltaY), 0, INTERVAL_OPTIONS.length - 1);
+    const next = INTERVAL_OPTIONS[ni];
+    if (next !== undefined && next !== intervalMin) setIntervalMin(next);
   };
 
   const cur = Math.round(currentMin / intervalMin);
@@ -509,7 +597,16 @@ function TimeWheel({
   }
   return (
     <div className="spike-wheel">
-      <div className="spike-wheel-cap">TIME — drag ↕ / scroll</div>
+      <div className="spike-wheel-interval">
+        <span>TIME · every</span>
+        <select value={intervalMin} onChange={(e) => setIntervalMin(Number(e.target.value))}>
+          {INTERVAL_OPTIONS.map((iv) => (
+            <option key={iv} value={iv}>
+              {iv < 60 ? `${iv} min` : `${iv / 60} h`}
+            </option>
+          ))}
+        </select>
+      </div>
       <div
         className="spike-wheel-reel"
         onPointerDown={onDown}
@@ -529,7 +626,7 @@ function TimeWheel({
           </div>
         ))}
       </div>
-      <div className="spike-wheel-hint">scrolls Stack &amp; Grid alike</div>
+      <div className="spike-wheel-hint">drag ↕ time · flick to spin · scroll = interval</div>
     </div>
   );
 }
@@ -557,7 +654,7 @@ export function TemporalSpike() {
   const [inset, setInset] = useState(0.9);
   const [showPermanent, setShowPermanent] = useState(true);
   const [showGround, setShowGround] = useState(true);
-  const [autoRotate, setAutoRotate] = useState(false);
+  const [singleMap, setSingleMap] = useState(false);
 
   // Layout morph: 0 = grid, 1 = stack, animated on toggle.
   const [morph, setMorph] = useState(1);
@@ -609,7 +706,9 @@ export function TemporalSpike() {
   const scrollCenter = clampN(scrollPos, half, Math.max(half, totalSlices - 1 - half));
   const currentSlice = clampN(Math.round(scrollPos), 0, totalSlices - 1);
   const windowStart = clampN(
-    currentSlice - Math.floor(windowEff / 2),
+    gridScroll === 'inplace'
+      ? Math.floor(currentSlice / windowEff) * windowEff // paged: highlight moves through cells
+      : currentSlice - FIXED_CELL, // fixed: window follows the current, pinned at the central cell
     0,
     Math.max(0, totalSlices - windowEff),
   );
@@ -656,16 +755,7 @@ export function TemporalSpike() {
   }, [cache, windowStart, windowEff]);
 
   const baseLabel = useMemo(() => getLabel('Permanent'), []);
-  const frameGeo = useMemo(() => {
-    const w = extent.width / 2;
-    const h = extent.height / 2;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute([-w, 0.2, -h, w, 0.2, -h, w, 0.2, h, -w, 0.2, h], 3),
-    );
-    return g;
-  }, [extent]);
+  const frameGeo = useMemo(() => frameBandGeometry(extent, 2.4), [extent]);
   useEffect(() => () => frameGeo.dispose(), [frameGeo]);
 
   const framing = useMemo(() => gridFraming(extent), [extent]);
@@ -690,12 +780,12 @@ export function TemporalSpike() {
           temporal={hourlyMode === 'temporal'}
           showPermanent={showPermanent}
           showGround={showGround}
+          singleMap={singleMap}
           morph={morph}
           scrollCenter={scrollCenter}
           half={half}
           currentSlice={currentSlice}
           windowStart={windowStart}
-          gridScroll={gridScroll}
           intervalMin={intervalMin}
           frameGeo={frameGeo}
         />
@@ -706,7 +796,6 @@ export function TemporalSpike() {
           gridCamHeight={framing.height}
           gridTargetZ={framing.targetZ}
           stackTargetY={stackTargetY}
-          autoRotate={autoRotate}
         />
       </Canvas>
 
@@ -728,20 +817,9 @@ export function TemporalSpike() {
               Stack 3D
             </button>
             <button type="button" className={layout === 'grid' ? 'on' : ''} onClick={() => setLayout('grid')}>
-              Grid 6×4
+              Grid 5×4
             </button>
           </div>
-        </div>
-
-        <div className="spike-row">
-          <label htmlFor="interval">Interval</label>
-          <select id="interval" value={intervalMin} onChange={(e) => setIntervalMin(Number(e.target.value))}>
-            {INTERVAL_OPTIONS.map((iv) => (
-              <option key={iv} value={iv}>
-                {iv < 60 ? `${iv} min` : `${iv / 60} h`}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div className="spike-row">
@@ -859,12 +937,12 @@ export function TemporalSpike() {
         </div>
 
         <div className="spike-row">
-          <label htmlFor="rotate">Auto-rotate</label>
+          <label htmlFor="single">Single map (stack)</label>
           <input
-            id="rotate"
+            id="single"
             type="checkbox"
-            checked={autoRotate}
-            onChange={(e) => setAutoRotate(e.target.checked)}
+            checked={singleMap}
+            onChange={(e) => setSingleMap(e.target.checked)}
           />
         </div>
 
@@ -874,7 +952,12 @@ export function TemporalSpike() {
         </p>
       </div>
 
-      <TimeWheel currentMin={currentMin} setCurrentMin={setCurrentMin} intervalMin={intervalMin} />
+      <TimeWheel
+        currentMin={currentMin}
+        setCurrentMin={setCurrentMin}
+        intervalMin={intervalMin}
+        setIntervalMin={setIntervalMin}
+      />
     </div>
   );
 }
