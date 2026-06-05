@@ -30,7 +30,6 @@ import {
   effectiveProfile,
   RISK_LABELS,
   RISK_TYPES,
-  speedModifiedProfile,
 } from '@domain';
 import type { CostParams, HexCell, RiskProfile, RiskType, WorldExtent, WorldPoint } from '@domain';
 import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
@@ -48,6 +47,7 @@ const STACK_CAM: readonly [number, number, number] = [62, 48, 80];
 const GRID_COLS = 6;
 const GRID_ROWS = 4;
 const GRID_GAP = 6; // km between tiles
+const GRID_TILT = 0.25; // z-offset as a fraction of height — a gentle bird's-eye, off the gimbal
 
 type Layout = 'stack' | 'grid';
 
@@ -126,15 +126,14 @@ function insetPoint(c: WorldPoint, v: WorldPoint, k: number): WorldPoint {
 }
 
 /**
- * The permanent, non-temporal risk for a cell: terrain (base + overrides) folded
- * with always-active zone offsets, then the constant journey-speed modifier — but
- * none of the time-of-day factors (day/night, time-bounded/moving zones).
+ * The permanent, non-temporal risk for a cell — exactly the live map's
+ * `selectCellCost` basis: terrain (base + overrides) folded with always-active
+ * zone offsets. No journey speed, no day/night, no time-bounded/moving zones.
  */
 function permanentProfile(inputs: ProfileInputs, cell: HexCell): RiskProfile | null {
   const rs = inputs.riskStates.get(cell.id);
   if (!rs) return null;
-  const folded = applyZoneOffsets(effectiveProfile(rs), inputs.zoneContribution.get(cell.id));
-  return speedModifiedProfile(folded, inputs.journeyParams.fixedSpeedKmh);
+  return applyZoneOffsets(effectiveProfile(rs), inputs.zoneContribution.get(cell.id));
 }
 
 /** One flat, vertex-coloured grid (all cells fanned into triangles, in the X-Z plane). */
@@ -172,9 +171,11 @@ function makeGridGeometry(
 
 /**
  * Build the permanent base grid (drawn solid) plus one grid per hour (gapped).
- * The real pipeline is sampled for every cell at every hour; composite costs are
- * normalised against a single global max (over base *and* hours) so colours
- * compare across the whole tower.
+ * The real pipeline is sampled for every cell at every hour. Composite costs are
+ * normalised against the **non-temporal base max** — exactly like the live map's
+ * `maxCost` (HexGridLayer) — so the permanent grid shows full terrain contrast
+ * and temporal spikes (storm/night) saturate to red rather than washing the
+ * whole tower out against an inflated global maximum.
  */
 function buildLayers(
   cells: readonly HexCell[],
@@ -186,7 +187,7 @@ function buildLayers(
   const n = cells.length;
   const baseVals = new Float32Array(n);
   const hourVals = new Float32Array(HOURS.length * n);
-  let maxValue = 0;
+  let baseMax = 0;
 
   const metric = (p: RiskProfile) =>
     shadeBy === 'composite' ? cellRiskCost(p, costParams) : p[shadeBy];
@@ -198,7 +199,7 @@ function buildLayers(
     if (!p) continue;
     const v = metric(p);
     baseVals[ci] = v;
-    if (v > maxValue) maxValue = v;
+    if (v > baseMax) baseMax = v; // scale is anchored to the base only…
   }
   for (const h of HOURS) {
     const st = { ...inputs, displayTime: h * 60 };
@@ -207,12 +208,12 @@ function buildLayers(
       if (!cell) continue;
       const p = selectDisplayProfile(st, cell.id, cell.vertices);
       if (!p) continue;
-      const v = metric(p);
-      hourVals[h * n + ci] = v;
-      if (v > maxValue) maxValue = v;
+      hourVals[h * n + ci] = metric(p); // …not the (storm/night-inflated) hours
     }
   }
-  const norm = shadeBy === 'composite' ? maxValue || 1 : 1;
+  // Single channels are already 0…1; composite divides by the base max. Values
+  // above it (storm/night) clamp to red in heatThreeColor.
+  const norm = shadeBy === 'composite' ? baseMax || 1 : 1;
 
   const base = makeGridGeometry(cells, inputs.extent, 1, (ci) => (baseVals[ci] ?? 0) / norm);
   const hours = HOURS.map((h) =>
@@ -274,14 +275,20 @@ function Orbit({
     return () => controls.dispose();
   }, [camera, gl]);
 
-  // Settle the target on the endpoint once a transition finishes (and on mount).
+  // Settle on the endpoint framing once a transition finishes (and on mount).
+  // Grid sets position + target (its framing is fixed); stack sets only the
+  // target so a user's orbit survives spacing tweaks.
   useEffect(() => {
     const controls = ref.current;
     if (!controls || transitioning) return;
-    if (layout === 'grid') controls.target.set(0, 0, gridTargetZ);
-    else controls.target.set(0, stackTargetY, 0);
+    if (layout === 'grid') {
+      camera.position.set(0, gridCamHeight, gridTargetZ + gridCamHeight * GRID_TILT);
+      controls.target.set(0, 0, gridTargetZ);
+    } else {
+      controls.target.set(0, stackTargetY, 0);
+    }
     controls.update();
-  }, [layout, transitioning, gridTargetZ, stackTargetY]);
+  }, [layout, transitioning, gridCamHeight, gridTargetZ, stackTargetY, camera]);
 
   useFrame(() => {
     const controls = ref.current;
@@ -301,7 +308,7 @@ function Orbit({
       const toPos =
         layout === 'stack'
           ? new THREE.Vector3(STACK_CAM[0], STACK_CAM[1], STACK_CAM[2])
-          : new THREE.Vector3(0, gridCamHeight, gridTargetZ + 0.001);
+          : new THREE.Vector3(0, gridCamHeight, gridTargetZ + gridCamHeight * GRID_TILT);
       const toTarget =
         layout === 'stack'
           ? new THREE.Vector3(0, stackTargetY, 0)
