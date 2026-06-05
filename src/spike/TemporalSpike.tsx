@@ -472,7 +472,7 @@ function Scene({
                 depthWrite={!temporal && op >= 1}
               />
             </mesh>
-            <sprite position={[0, 2, -extent.height / 2 - 5]} scale={[18, 4.5, 1]}>
+            <sprite position={[0, 2, -extent.height / 2 - 2.2]} scale={[16, 4, 1]}>
               <spriteMaterial map={labels[h] ?? null} transparent opacity={1 - m} depthTest={false} />
             </sprite>
           </group>
