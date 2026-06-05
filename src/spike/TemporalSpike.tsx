@@ -901,6 +901,18 @@ export function TemporalSpike() {
   const [singleMap, setSingleMap] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
   const [showRoutes3d, setShowRoutes3d] = useState(true);
+  // Mount the Leaflet map once and keep it mounted, so its terrain raster is
+  // built a single time rather than on every base-off toggle. Warm it shortly
+  // after load (off the critical path) so the first reveal is instant; if the
+  // base is switched off before then, mount it right away.
+  const [mapMounted, setMapMounted] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setMapMounted(true), 1500);
+    return () => clearTimeout(id);
+  }, []);
+  useEffect(() => {
+    if (!showPermanent) setMapMounted(true);
+  }, [showPermanent]);
 
   // Layout morph: 0 = grid, 1 = stack, animated on toggle.
   const [morph, setMorph] = useState(1);
@@ -1052,8 +1064,11 @@ export function TemporalSpike() {
 
   return (
     <div className="spike-root">
-      {mapShown && (
-        <div className="spike-map-layer">
+      {mapMounted && (
+        <div
+          className="spike-map-layer"
+          style={{ visibility: mapShown ? 'visible' : 'hidden' }}
+        >
           <div
             className="spike-map-quad"
             ref={mapQuadRef}
@@ -1100,7 +1115,7 @@ export function TemporalSpike() {
           stackTargetY={stackTargetY}
           autoRotate={autoRotate}
         />
-        {mapShown && (
+        {mapMounted && (
           <MapPlaneTransform extent={extent} morph={morph} quadH={mapH} quadRef={mapQuadRef} />
         )}
       </Canvas>
