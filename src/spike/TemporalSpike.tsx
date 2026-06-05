@@ -587,7 +587,7 @@ function buildRoutePolys(plan: RoutePlan, grid: HexGrid, extent: WorldExtent): R
       color: new THREE.Color(coaColor(idx)),
       pts,
       times,
-      faintGeo: ribbonGeometry(pts, 0.35, 0.34),
+      faintGeo: ribbonGeometry(pts, 0.7, 0.34),
     };
   });
 }
@@ -1079,7 +1079,7 @@ export function TemporalSpike() {
       const t = index * intervalMin;
       const arr: { color: THREE.Color; geo: THREE.BufferGeometry }[] = [];
       for (const r of routePolys) {
-        const geo = ribbonGeometry(activeSubPath(r.pts, r.times, t, intervalMin), 1.2, 0.5);
+        const geo = ribbonGeometry(activeSubPath(r.pts, r.times, t, intervalMin), 0.6, 0.5);
         if (geo) arr.push({ color: r.color, geo });
       }
       if (arr.length) map.set(index, arr);
