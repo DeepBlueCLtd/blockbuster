@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import type { RiskZone } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { TemporalSpike } from './TemporalSpike';
+import 'leaflet/dist/leaflet.css';
 import './spike.css';
 
 // Vertex colours reach the GPU exactly as authored, matching the 2D map.

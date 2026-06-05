@@ -16,10 +16,14 @@
  * Delete `src/spike/`, `temporal3d.html` and the extra `vite` input to remove.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { MapContainer } from 'react-leaflet';
+import { CRS } from 'leaflet';
+import type { LatLngBoundsExpression } from 'leaflet';
+import { TerrainLayer } from '@/ui/map/TerrainLayer';
 import {
   applyZoneOffsets,
   cellRiskCost,
@@ -48,6 +52,7 @@ const GRID_GAP = 6; // km between tiles
 const GRID_TILT = 0.25; // z-offset as a fraction of height — a gentle bird's-eye, off the gimbal
 const FIXED_CELL = GRID_COLS + 2; // current pins to the central column (col 2), row 1
 const PAN_X_GRID = 40; // shift the grid right (km) so its left column clears the control panel
+const MAP_W = 900; // px width of the Leaflet map quad that lies on the base plane
 
 const DELTA_FRAC = 0.4; // composite temporal Δ reaches full colour at this fraction of the base max
 
@@ -397,6 +402,79 @@ function GroundPlane({ extent, opacity }: { extent: WorldExtent; opacity: number
   );
 }
 
+/**
+ * SPIKE: the live app Leaflet map (terrain), reused as the "permanent base"
+ * stand-in to de-risk combining the 2D control with the 3D stack. View-only —
+ * interactions are disabled and it sits behind a transparent canvas.
+ */
+function SpikeLeafletMap({ extent }: { extent: WorldExtent }) {
+  const bounds: LatLngBoundsExpression = [
+    [0, 0],
+    [extent.height, extent.width],
+  ];
+  return (
+    <MapContainer
+      crs={CRS.Simple}
+      bounds={bounds}
+      className="spike-leaflet"
+      attributionControl={false}
+      zoomControl={false}
+      dragging={false}
+      scrollWheelZoom={false}
+      doubleClickZoom={false}
+      keyboard={false}
+    >
+      <TerrainLayer />
+    </MapContainer>
+  );
+}
+
+/**
+ * Lays the Leaflet quad (a DOM element behind the transparent canvas) onto the
+ * base ground-plane footprint, tracking the camera each frame. The camera is
+ * orthographic, so the plane projects to a parallelogram — a 2D affine
+ * `matrix(...)` reproduces it exactly (no perspective division needed).
+ */
+function MapPlaneTransform({
+  extent,
+  morph,
+  quadH,
+  quadRef,
+}: {
+  extent: WorldExtent;
+  morph: number;
+  quadH: number;
+  quadRef: RefObject<HTMLDivElement | null>;
+}) {
+  const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
+  const morphRef = useRef(morph);
+  morphRef.current = morph;
+  const tmp = useRef(new THREE.Vector3());
+
+  useFrame(() => {
+    const el = quadRef.current;
+    if (!el) return;
+    const m = smoothstep(morphRef.current);
+    const s = lerp(1, BASE_OVERHANG, m);
+    const bz = lerp(baseRowZ(extent), 0, m);
+    const halfW = (extent.width / 2) * s;
+    const halfH = (extent.height / 2) * s;
+    const toScreen = (X: number, Z: number): readonly [number, number] => {
+      const v = tmp.current.set(X, 0, Z).project(camera);
+      return [(v.x * 0.5 + 0.5) * size.width, (-v.y * 0.5 + 0.5) * size.height];
+    };
+    const [ax, ay] = toScreen(-halfW, bz - halfH); // NW → quad top-left
+    const [bx, by] = toScreen(halfW, bz - halfH); // NE → quad top-right
+    const [cx, cy] = toScreen(-halfW, bz + halfH); // SW → quad bottom-left
+    el.style.transform =
+      `matrix(${(bx - ax) / MAP_W},${(by - ay) / MAP_W},` +
+      `${(cx - ax) / quadH},${(cy - ay) / quadH},${ax},${ay})`;
+    if (el.style.opacity !== '1') el.style.opacity = '1';
+  });
+  return null;
+}
+
 /** The whole scene, morphed between grid (0) and stack (1), windowed on the current slice. */
 function Scene({
   base,
@@ -440,7 +518,7 @@ function Scene({
   const baseScale = lerp(1, BASE_OVERHANG, m);
   return (
     <group>
-      {showGround && m > 0.15 && <GroundPlane extent={extent} opacity={0.85 * m} />}
+      {showGround && showPermanent && m > 0.15 && <GroundPlane extent={extent} opacity={0.85 * m} />}
 
       {showPermanent && (
         <group position={[0, 0, baseZ]} scale={[baseScale, 1, baseScale]}>
@@ -798,12 +876,31 @@ export function TemporalSpike() {
     Math.hypot(STACK_CAM[0], STACK_CAM[1] - stackTargetY, STACK_CAM[2]),
   );
 
+  const mapQuadRef = useRef<HTMLDivElement>(null);
+  const mapShown = !showPermanent; // base off → drop in the live Leaflet map
+  const mapH = Math.round(MAP_W * (extent.height / extent.width));
+
   if (!grid || !cells || !baseInfo) return <div className="spike-loading">Building world…</div>;
 
   return (
     <div className="spike-root">
-      <Canvas orthographic camera={{ position: [62, 48, 80], zoom: initialZoom, near: 0.1, far: 4000 }}>
-        <color attach="background" args={['#0b0e14']} />
+      {mapShown && (
+        <div className="spike-map-layer">
+          <div
+            className="spike-map-quad"
+            ref={mapQuadRef}
+            style={{ width: MAP_W, height: mapH, opacity: 0 }}
+          >
+            <SpikeLeafletMap extent={extent} />
+          </div>
+        </div>
+      )}
+      <Canvas
+        orthographic
+        gl={{ alpha: true }}
+        style={{ position: 'absolute', inset: 0, zIndex: 1 }}
+        camera={{ position: [62, 48, 80], zoom: initialZoom, near: 0.1, far: 4000 }}
+      >
         <Scene
           base={baseInfo.geometry}
           baseLabel={baseLabel}
@@ -832,6 +929,9 @@ export function TemporalSpike() {
           stackTargetY={stackTargetY}
           autoRotate={autoRotate}
         />
+        {mapShown && (
+          <MapPlaneTransform extent={extent} morph={morph} quadH={mapH} quadRef={mapQuadRef} />
+        )}
       </Canvas>
 
       <a className="spike-back" href="index.html">
@@ -993,7 +1093,8 @@ export function TemporalSpike() {
 
         <p className="spike-note">
           Only the {windowEff}-layer window (+buffer) is computed &amp; cached; slices build on the
-          fly as you scroll. Permanent base anchors the colour scale and sits beneath the stack.
+          fly as you scroll. Permanent base anchors the colour scale and sits beneath the stack —
+          switch it off to drop the live Leaflet map onto that plane.
         </p>
       </div>
 
