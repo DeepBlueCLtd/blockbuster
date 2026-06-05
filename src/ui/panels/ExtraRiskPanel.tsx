@@ -34,6 +34,8 @@ export function ExtraRiskPanel() {
   const toggleZoneEnabled = useBlockbusterStore((s) => s.toggleZoneEnabled);
   const addZone = useBlockbusterStore((s) => s.addZone);
   const extent = useBlockbusterStore((s) => s.extent);
+  const cyclone = useBlockbusterStore((s) => s.cyclone);
+  const toggleCyclone = useBlockbusterStore((s) => s.toggleCyclone);
 
   const [showStorm, setShowStorm] = useState(false);
   const [stormIntensity, setStormIntensity] = useState(0.3);
@@ -45,6 +47,35 @@ export function ExtraRiskPanel() {
 
   return (
     <div className="extra-risk">
+      {cyclone ? (
+        <div className="weather-section">
+          <h3 className="extra-subhead">Weather</h3>
+          <ul className="zone-list">
+            <li className="zone-row">
+              <label
+                className="zone-toggle"
+                title={cyclone.enabled ? 'Switch the weather off' : 'Switch the weather on'}
+              >
+                <input type="checkbox" checked={cyclone.enabled} onChange={toggleCyclone} />
+              </label>
+              <div className="zone-select">
+                <span className={cyclone.enabled ? 'zone-name' : 'zone-name zone-disabled'}>
+                  {cyclone.name}
+                </span>
+                <span className="zone-meta">
+                  cyclone · anticlockwise · {formatTime(cyclone.startTime)}–
+                  {formatTime(cyclone.endTime)}
+                </span>
+              </div>
+            </li>
+          </ul>
+          <p className="panel-hint">
+            A rotating wind field that sweeps the map across its window. Off ⇒ no wind effect on
+            routes and no overlay; toggle the on-map arrows with “Wind” on the map toolbar.
+          </p>
+        </div>
+      ) : null}
+
       <p className="panel-hint">
         Choose a risk, pick a tool, then draw a zone on the map. For a polygon, click each point and
         click the first point again to close it.

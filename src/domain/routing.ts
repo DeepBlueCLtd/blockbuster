@@ -4,6 +4,7 @@ import type { RiskProfile, RiskType } from './risk';
 import type { CostParams } from './cost';
 import type { JourneyParams, DayNightConfig, TimeWindow } from './journey';
 import type { RiskZone } from './zone';
+import type { Cyclone } from './wind';
 
 /**
  * Everything the routing engine needs, in structured-clone-friendly form so it
@@ -47,6 +48,13 @@ export interface RouteRequest {
    * sending and should not appear here.
    */
   timeVaryingZones?: RiskZone[];
+  /**
+   * Optional cyclone (rotating wind field). Evaluated per step inside the worker
+   * at the cell's arrival time and the edge's heading: it scales the per-risk cost
+   * directionally (head/tail/cross wind) and the effective travel speed. Plain,
+   * structured-clone-safe data. Omit for no wind.
+   */
+  cyclone?: Cyclone;
   /**
    * Optional earliest/latest arrival time per waypoint (parallel to `waypoints`).
    * Violations incur a soft cost penalty rather than hard blocking.

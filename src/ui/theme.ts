@@ -30,6 +30,13 @@ export const COA_COLORS = [
 /** Light halo drawn under a COA line so its colour reads on any background. */
 export const COA_HALO_COLOR = '#ffffff';
 
+/**
+ * Bold colour for the wind-field arrows. Deeper than the cold channel's pale
+ * cyan so it reads over the terrain base map; paired with a white casing (see
+ * {@link COA_HALO_COLOR}) so it stays visible over water too.
+ */
+export const WIND_ARROW_COLOR = '#01415e';
+
 /** Colour for the COA at `index` in the plan (best-first), wrapping if needed. */
 export function coaColor(index: number): string {
   return COA_COLORS[index % COA_COLORS.length] ?? COA_COLORS[0];

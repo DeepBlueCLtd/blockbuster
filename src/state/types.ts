@@ -2,6 +2,7 @@ import type {
   CellId,
   CellRiskState,
   CostParams,
+  Cyclone,
   DayNightConfig,
   HexGrid,
   JourneyParams,
@@ -54,6 +55,12 @@ export interface BlockbusterState {
   zones: RiskZone[];
   /** Which risk channel a newly drawn zone targets (the Extra-risk tab dropdown). */
   zoneRiskType: RiskType;
+  /**
+   * The world's cyclone (rotating wind field), re-seeded on every regenerate.
+   * Its directional effect on risk and speed is applied per step by the planner;
+   * the map's wind overlay reads it to draw the field. Null before the first build.
+   */
+  cyclone: Cyclone | null;
 
   // --- Journey / time mechanics ---
   journeyParams: JourneyParams;
@@ -95,6 +102,8 @@ export interface BlockbusterState {
   showRiskStacks: boolean;
   /** Whether the generated route lines and waypoint markers are drawn. */
   showRoutes: boolean;
+  /** Whether the cyclone wind overlay (eye, radii, arrows) is drawn at `displayTime`. */
+  showWind: boolean;
   /** When true, the full-viewport 3D temporal view replaces the default app. */
   temporalView: boolean;
 
@@ -124,6 +133,7 @@ export interface BlockbusterState {
   setShowRiskBars: (show: boolean) => void;
   setShowRiskStacks: (show: boolean) => void;
   setShowRoutes: (show: boolean) => void;
+  setShowWind: (show: boolean) => void;
   /** Open (true) or close (false) the full-viewport 3D temporal view. */
   setTemporalView: (open: boolean) => void;
   // --- Journey / time mechanics ---
@@ -148,4 +158,6 @@ export interface BlockbusterState {
   toggleZoneEnabled: (id: string) => void;
   setDrawMode: (mode: DrawMode) => void;
   setZoneRiskType: (risk: RiskType) => void;
+  /** Switch the world's cyclone (the weather system) on or off; triggers a replan. */
+  toggleCyclone: () => void;
 }

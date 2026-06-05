@@ -8,9 +8,11 @@ import { RiskPieLayer } from './RiskPieLayer';
 import { RiskBarLayer } from './RiskBarLayer';
 import { RiskStackLayer } from './RiskStackLayer';
 import { RouteLayer } from './RouteLayer';
+import { WindLayer } from './WindLayer';
 import { MapToolbar } from './MapToolbar';
 import { BiomeLegend } from './BiomeLegend';
 import { RiskPieLegend } from './RiskPieLegend';
+import { WindLegend } from './WindLegend';
 import { ExtraRiskLayer } from './extra-risk/ExtraRiskLayer';
 import { ExtraRiskDraw } from './extra-risk/ExtraRiskDraw';
 
@@ -48,11 +50,13 @@ export function MapView() {
         <RiskBarLayer />
         <RiskStackLayer />
         <RouteLayer />
+        <WindLayer />
         <ExtraRiskLayer />
         {activeTab === 'extra' && <ExtraRiskDraw />}
       </MapContainer>
       <BiomeLegend />
       <RiskPieLegend />
+      <WindLegend />
     </div>
   );
 }

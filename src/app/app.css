@@ -122,6 +122,22 @@ body,
   right: 10px;
 }
 
+/* Centre the wind key along the bottom, clear of the corner legends. */
+.map-legend--wind {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  max-width: none;
+}
+
+.map-legend--wind .wind-glyph {
+  width: auto;
+  height: auto;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 /* --- Side pane --- */
 .side-pane {
   display: flex;
@@ -674,6 +690,17 @@ button:hover {
 }
 
 /* --- Extra-risk tab --- */
+.weather-section {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.extra-subhead {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
 .extra-field {
   display: flex;
   flex-direction: column;

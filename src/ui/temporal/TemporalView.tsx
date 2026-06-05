@@ -14,8 +14,9 @@
  * Faithful, not faked: the permanent **base** is the non-temporal terrain risk
  * (the live map's selectCellCost basis), pinned beneath the stack. Each slice is
  * coloured by the real `selectDisplayProfile` pipeline; by default it shows the
- * **temporal Δ** (storm + day/night only) on a transparent background so the
- * base shows through.
+ * **temporal Δ** (day/night + any time-varying zones) on a transparent background
+ * so the base shows through. The cyclone's effect is directional (it depends on
+ * heading), so it shapes the COA routes rather than this per-cell shading.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
@@ -154,7 +155,7 @@ function permanentProfile(inputs: ProfileInputs, cell: HexCell): RiskProfile | n
   if (!rs) return null;
   return applyZoneOffsets(effectiveProfile(rs), inputs.zoneContribution.get(cell.id));
 }
-/** Baseline for the Δ: permanent risk + journey speed, no day/night, no storm. */
+/** Baseline for the Δ: permanent risk + journey speed, no day/night, no zones. */
 function noTemporalProfile(inputs: ProfileInputs, cell: HexCell): RiskProfile | null {
   const base = permanentProfile(inputs, cell);
   if (!base) return null;

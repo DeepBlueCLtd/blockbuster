@@ -17,6 +17,8 @@ export function MapToolbar() {
   const setShowRiskStacks = useBlockbusterStore((s) => s.setShowRiskStacks);
   const showRoutes = useBlockbusterStore((s) => s.showRoutes);
   const setShowRoutes = useBlockbusterStore((s) => s.setShowRoutes);
+  const showWind = useBlockbusterStore((s) => s.showWind);
+  const setShowWind = useBlockbusterStore((s) => s.setShowWind);
   const displayRisk = useBlockbusterStore((s) => s.displayRisk);
   const setDisplayRisk = useBlockbusterStore((s) => s.setDisplayRisk);
   const hexSize = useBlockbusterStore((s) => s.hexSize);
@@ -76,6 +78,14 @@ export function MapToolbar() {
             onChange={(event) => setShowRoutes(event.target.checked)}
           />
           Routes
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showWind}
+            onChange={(event) => setShowWind(event.target.checked)}
+          />
+          Wind
         </label>
       </div>
       <label>
