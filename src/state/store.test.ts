@@ -134,7 +134,7 @@ describe('store — extra-risk zones', () => {
 });
 
 describe('store — hex-size decoupling', () => {
-  it('clears the COAs at once but defers the heavy rebuild to a debounce', () => {
+  it('live-resizes the grid and clears the COAs immediately', () => {
     vi.useFakeTimers();
     try {
       const store = createBlockbusterStore(createMockEngine());
@@ -149,17 +149,12 @@ describe('store — hex-size decoupling', () => {
 
       store.getState().setHexSize(4);
 
-      // The control reflects the new size immediately and the stale COAs are gone …
+      // The grid tracks the slider at once (live resize) and the stale COAs are gone.
       expect(store.getState().hexSize).toBe(4);
-      expect(store.getState().plan).toBeNull();
-      expect(store.getState().selectedCoaId).toBeNull();
-      // … but the world is not rebuilt synchronously (still the same grid object).
-      expect(store.getState().grid).toBe(grid);
-
-      // Once the slider settles, the debounce fires and rebuilds the grid larger.
-      vi.advanceTimersByTime(200);
       expect(store.getState().grid).not.toBe(grid);
       expect(store.getState().grid?.cells.length).toBeLessThan(cellCount);
+      expect(store.getState().plan).toBeNull();
+      expect(store.getState().selectedCoaId).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -173,10 +168,9 @@ describe('store — hex-size decoupling', () => {
       const field = store.getState().field;
       expect(field).not.toBeNull();
 
-      // A hex-size change rebuilds the grid but keeps the same field object, so
+      // A live resize rebuilds the grid but keeps the same field object, so
       // TerrainLayer's cached raster stays valid — no expensive re-rasterise.
       store.getState().setHexSize(4);
-      vi.advanceTimersByTime(200);
       expect(store.getState().field).toBe(field);
 
       // A new seed is a new world, so the field (and its raster) is rebuilt.
@@ -187,29 +181,32 @@ describe('store — hex-size decoupling', () => {
     }
   });
 
-  it('coalesces rapid slider changes into a single rebuild at the final size', () => {
+  it('rebuilds live on every step but coalesces the replan to a single run', () => {
     vi.useFakeTimers();
     try {
-      const store = createBlockbusterStore(createMockEngine());
+      const engine = createMockEngine();
+      const planSpy = vi.spyOn(engine.routePlanner, 'plan');
+      const store = createBlockbusterStore(engine);
       store.getState().regenerate(1);
-      const grid = store.getState().grid;
+      planSpy.mockClear(); // ignore the initial regenerate's replan
 
-      // Drag the slider across several values inside one debounce window.
+      // Drag the slider across several steps within one debounce window.
       store.getState().setHexSize(3);
-      vi.advanceTimersByTime(50);
+      const gridA = store.getState().grid;
       store.getState().setHexSize(3.5);
-      vi.advanceTimersByTime(50);
+      const gridB = store.getState().grid;
       store.getState().setHexSize(4);
-      // Each change reset the timer, so no rebuild has happened yet.
-      expect(store.getState().grid).toBe(grid);
+      const gridC = store.getState().grid;
 
-      // Only the final size rebuilds, exactly once.
+      // Each step rebuilt the grid live (distinct grids) without replanning yet.
+      expect(gridA).not.toBe(gridB);
+      expect(gridB).not.toBe(gridC);
+      expect(planSpy).not.toHaveBeenCalled();
+
+      // The replan fires once, after the drag settles, at the final size.
       vi.advanceTimersByTime(200);
-      const rebuilt = store.getState().grid;
-      expect(rebuilt).not.toBe(grid);
+      expect(planSpy).toHaveBeenCalledTimes(1);
       expect(store.getState().hexSize).toBe(4);
-      vi.advanceTimersByTime(500);
-      expect(store.getState().grid).toBe(rebuilt);
     } finally {
       vi.useRealTimers();
     }

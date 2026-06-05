@@ -82,7 +82,6 @@ function defaultWaypoints(grid: HexGrid): CellId[] {
  */
 export function createBlockbusterStore(engine: Engine) {
   let replanTimer: ReturnType<typeof setTimeout> | undefined;
-  let regenerateTimer: ReturnType<typeof setTimeout> | undefined;
 
   return create<BlockbusterState>()((set, get) => {
     const scheduleReplan = () => {
@@ -90,12 +89,62 @@ export function createBlockbusterStore(engine: Engine) {
       replanTimer = setTimeout(() => void get().replan(), 150);
     };
 
-    // Rebuilding the world (map-gen → grid → terrain → risk scoring) is a
-    // synchronous, main-thread-blocking pass, so coalesce rapid slider input
-    // (e.g. dragging the hex-size control) into a single rebuild once it settles.
-    const scheduleRegenerate = () => {
-      if (regenerateTimer) clearTimeout(regenerateTimer);
-      regenerateTimer = setTimeout(() => get().regenerate(), 150);
+    /**
+     * Rebuild the derived world (grid → terrain → risk) from the current
+     * seed/extent/hexSize and commit it. Pure state update — it does NOT replan,
+     * so callers choose the cadence: {@link BlockbusterState.regenerate} replans
+     * immediately, while a live hex-size drag rebuilds on every step and
+     * debounces the (worker) replan so planning runs once the drag settles.
+     */
+    const rebuildWorld = (seed?: number) => {
+      const s = get();
+      const useSeed = seed ?? s.seed;
+      const grid = engine.gridBuilder.build(s.extent, {
+        orientation: 'pointy',
+        size: s.hexSize,
+      });
+      // The terrain field depends only on seed + extent, never on hex size, so
+      // reuse the existing one when neither changed. This keeps TerrainLayer's
+      // cached base-map raster valid: a hex-size change must not trigger a full,
+      // main-thread re-rasterise (~96k samples + PNG encode) of an unchanged world.
+      const field =
+        s.field && s.field.seed === useSeed && s.field.extent === s.extent
+          ? s.field
+          : engine.mapGenerator.generate({ extent: s.extent, seed: useSeed });
+      const terrain = engine.gridBuilder.sampleTerrain(grid, field);
+      const riskStates = new Map<CellId, CellRiskState>();
+      for (const cell of grid.cells) {
+        const sample = terrain.get(cell.id);
+        if (!sample) continue;
+        riskStates.set(cell.id, {
+          cellId: cell.id,
+          base: engine.riskEngine.baseProfile(sample),
+          overrides: {},
+        });
+      }
+      let waypoints = s.waypoints.filter((id) => grid.get(id));
+      if (waypoints.length < 2) waypoints = defaultWaypoints(grid);
+
+      // Zones are pinned to the basemap they were drawn on, so they are dropped
+      // when the seed changes (a new world) but kept across a same-seed rebuild
+      // such as a hex-size change (the basemap is unchanged; only the grid moved).
+      const basemapChanged = useSeed !== s.seed;
+      const zones = basemapChanged ? [] : s.zones;
+
+      set({
+        seed: useSeed,
+        grid,
+        field,
+        terrain,
+        riskStates,
+        waypoints,
+        zones,
+        // Coverage is re-derived against the new grid (kept zones, new hex layout).
+        zoneContribution: computeZoneContribution(grid, zones),
+        selectedZoneId: basemapChanged ? null : s.selectedZoneId,
+        selectedCellId: null,
+        selectedCoaId: null,
+      });
     };
 
     return {
@@ -139,64 +188,19 @@ export function createBlockbusterStore(engine: Engine) {
       showRoutes: false,
 
       regenerate: (seed) => {
-        const s = get();
-        const useSeed = seed ?? s.seed;
-        const grid = engine.gridBuilder.build(s.extent, {
-          orientation: 'pointy',
-          size: s.hexSize,
-        });
-        // The terrain field depends only on seed + extent, never on hex size, so
-        // reuse the existing one when neither changed. This keeps TerrainLayer's
-        // cached base-map raster valid: a hex-size change must not trigger a full,
-        // main-thread re-rasterise (~96k samples + PNG encode) of an unchanged world.
-        const field =
-          s.field && s.field.seed === useSeed && s.field.extent === s.extent
-            ? s.field
-            : engine.mapGenerator.generate({ extent: s.extent, seed: useSeed });
-        const terrain = engine.gridBuilder.sampleTerrain(grid, field);
-        const riskStates = new Map<CellId, CellRiskState>();
-        for (const cell of grid.cells) {
-          const sample = terrain.get(cell.id);
-          if (!sample) continue;
-          riskStates.set(cell.id, {
-            cellId: cell.id,
-            base: engine.riskEngine.baseProfile(sample),
-            overrides: {},
-          });
-        }
-        let waypoints = s.waypoints.filter((id) => grid.get(id));
-        if (waypoints.length < 2) waypoints = defaultWaypoints(grid);
-
-        // Zones are pinned to the basemap they were drawn on, so they are dropped
-        // when the seed changes (a new world) but kept across a same-seed rebuild
-        // such as a hex-size change (the basemap is unchanged; only the grid moved).
-        const basemapChanged = useSeed !== s.seed;
-        const zones = basemapChanged ? [] : s.zones;
-
-        set({
-          seed: useSeed,
-          grid,
-          field,
-          terrain,
-          riskStates,
-          waypoints,
-          zones,
-          // Coverage is re-derived against the new grid (kept zones, new hex layout).
-          zoneContribution: computeZoneContribution(grid, zones),
-          selectedZoneId: basemapChanged ? null : s.selectedZoneId,
-          selectedCellId: null,
-          selectedCoaId: null,
-        });
+        rebuildWorld(seed);
         void get().replan();
       },
 
       setHexSize: (size) => {
-        // Decouple the slider from the heavy rebuild: reflect the new size on the
-        // control at once and drop the now-stale COAs so the old routes don't
-        // linger over a grid they no longer fit. The grid rebuild + worker replan
-        // run on a debounce, and the recomputed COAs reappear when they're ready.
+        // Live resize: rebuild the grid on every step so the hexes track the
+        // slider in real time — the base-map raster is reused, so this is cheap.
+        // The now-stale COAs are dropped (they'd be drawn against a grid they no
+        // longer fit), and only the worker replan is debounced, so planning runs
+        // once the drag settles and the recomputed COAs reappear when ready.
         set({ hexSize: size, plan: null, selectedCoaId: null });
-        scheduleRegenerate();
+        rebuildWorld();
+        scheduleReplan();
       },
 
       setAppetite: (risk, value) => {
