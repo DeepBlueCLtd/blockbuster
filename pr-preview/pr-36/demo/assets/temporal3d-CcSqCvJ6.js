@@ -1,0 +1,1 @@
+import{c as o,F as r,j as t,r as n}from"./time-ogX_23rI.js";import{TemporalView as s}from"./TemporalView-B3podG4a.js";const c=1;o.getState().regenerate(c);const e=document.getElementById("root");if(!e)throw new Error("Root element #root not found");r.createRoot(e).render(t.jsx(n.StrictMode,{children:t.jsx(s,{})}));
