@@ -5,19 +5,17 @@
  * no Leaflet.
  *
  * Faithful, not faked:
- * - The permanent **base grid** (a solid, slightly-overhanging slab at the
- *   bottom of the stack) is the non-temporal risk — terrain + always-active
- *   zones + journey speed, no day/night, no time-zones.
+ * - The permanent **base grid** is the non-temporal risk — terrain
+ *   (mountains/towns) + always-active zones + journey speed, no day/night, no
+ *   time-zones. In the stack it is a solid overhanging slab at the bottom; in
+ *   the grid it is a labelled map on its own above the hourly tiles.
  * - Each hourly grid is coloured by the real production pipeline,
  *   `selectDisplayProfile` (the same function the time slider drives) →
  *   `cellRiskCost`. Base + hours share one colour scale.
  *
- * Two layouts (toggle):
- * - **Stack** — 24 grids up the z-axis over the permanent base; controls for
- *   the obvious occlusion mitigations (gap, opacity, decimation, single-hour
- *   spotlight).
- * - **Grid** — the same 24 grids as a flat 6×4 of small multiples, labelled by
- *   hour, viewed top-down.
+ * One scene, two layouts. A `morph` value (0 = grid, 1 = stack) animates every
+ * tile between its flat 6×4 slot and its stacked height, so toggling the layout
+ * is a continuous transition rather than a cut.
  *
  * Delete `src/spike/`, `temporal3d.html` and the extra `vite` input to remove.
  */
@@ -41,12 +39,12 @@ import { formatTime } from '@/ui/utils/time';
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 // Stack: the permanent base reads as a foundation — a solid pedestal that
-// overhangs the temporal stack (so its rim stays visible from above, where the
-// stacked translucent hours would otherwise bury it) with a clear gap to hour 0.
+// overhangs the temporal stack with a clear gap to hour 0.
 const BASE_OVERHANG = 1.08;
 const STACK_START = 2; // hour 0 sits this many `spacing` units above the base
+const STACK_CAM: readonly [number, number, number] = [62, 48, 80];
 
-// Grid: 24 hourly maps as small multiples.
+// Grid: 24 hourly maps as small multiples, with the permanent map above them.
 const GRID_COLS = 6;
 const GRID_ROWS = 4;
 const GRID_GAP = 6; // km between tiles
@@ -70,6 +68,41 @@ interface BuiltLayers {
   base: THREE.BufferGeometry;
   /** One vertex-coloured grid per hour 0…23. */
   hours: THREE.BufferGeometry[];
+}
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const smoothstep = (t: number) => {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+};
+
+const gridCellW = (e: WorldExtent) => e.width + GRID_GAP;
+const gridCellH = (e: WorldExtent) => e.height + GRID_GAP;
+/** Z of the permanent map, centred just north of the hourly grid. */
+const baseRowZ = (e: WorldExtent) => -(GRID_ROWS / 2 + 0.5) * gridCellH(e);
+
+/** Flat 6×4 slot (X, Z) for hour `h`, centred on the origin. */
+function gridTileXZ(h: number, e: WorldExtent): readonly [number, number] {
+  const col = h % GRID_COLS;
+  const row = Math.floor(h / GRID_COLS);
+  return [(col - (GRID_COLS - 1) / 2) * gridCellW(e), (row - (GRID_ROWS - 1) / 2) * gridCellH(e)];
+}
+
+/** Top-down camera height + target-Z that frames the grid plus the map above it. */
+function gridFraming(e: WorldExtent): { height: number; targetZ: number } {
+  const gridW = GRID_COLS * gridCellW(e);
+  const zNorth = baseRowZ(e) - e.height / 2;
+  const zSouth = ((GRID_ROWS - 1) / 2) * gridCellH(e) + e.height / 2;
+  const targetZ = (zNorth + zSouth) / 2;
+  const depth = zSouth - zNorth;
+  const vfov = (45 * Math.PI) / 180;
+  const aspect =
+    typeof window !== 'undefined' && window.innerHeight > 0
+      ? window.innerWidth / window.innerHeight
+      : 1.6;
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
+  const height = Math.max(gridW / 2 / Math.tan(hfov / 2), depth / 2 / Math.tan(vfov / 2)) * 1.1;
+  return { height, targetZ };
 }
 
 /**
@@ -179,10 +212,8 @@ function buildLayers(
       if (v > maxValue) maxValue = v;
     }
   }
-  // Single channels are already 0…1; composite is normalised by the global max.
   const norm = shadeBy === 'composite' ? maxValue || 1 : 1;
 
-  // The base is drawn solid (inset 1 = continuous honeycomb) so it reads as a slab.
   const base = makeGridGeometry(cells, inputs.extent, 1, (ci) => (baseVals[ci] ?? 0) / norm);
   const hours = HOURS.map((h) =>
     makeGridGeometry(cells, inputs.extent, inset, (ci) => (hourVals[h * n + ci] ?? 0) / norm),
@@ -190,14 +221,14 @@ function buildLayers(
   return { base, hours };
 }
 
-/** A small canvas-texture label (e.g. "06:00") for the grid tiles. */
+/** A small canvas-texture label (e.g. "06:00", "Permanent") for the grid tiles. */
 function makeLabelTexture(text: string): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 64;
   const ctx = canvas.getContext('2d');
   if (ctx) {
-    ctx.font = 'bold 44px system-ui, sans-serif';
+    ctx.font = 'bold 40px system-ui, sans-serif';
     ctx.fillStyle = '#e6edf3';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -208,22 +239,31 @@ function makeLabelTexture(text: string): THREE.CanvasTexture {
   return tex;
 }
 
-/** three's OrbitControls, wrapped for R3F. Reframes the camera on layout switch. */
+/** three's OrbitControls, wrapped for R3F. Eases the camera across the morph. */
 function Orbit({
   layout,
-  stackTargetY,
+  transitioning,
+  morph,
   gridCamHeight,
+  gridTargetZ,
+  stackTargetY,
   autoRotate,
 }: {
   layout: Layout;
-  stackTargetY: number;
+  transitioning: boolean;
+  morph: number;
   gridCamHeight: number;
+  gridTargetZ: number;
+  stackTargetY: number;
   autoRotate: boolean;
 }) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const ref = useRef<OrbitControls | null>(null);
-  const prevLayout = useRef<Layout>(layout);
+  const fromPos = useRef(new THREE.Vector3());
+  const fromTarget = useRef(new THREE.Vector3());
+  const startMorph = useRef(0);
+  const animating = useRef(false);
 
   useEffect(() => {
     const controls = new OrbitControls(camera, gl.domElement);
@@ -234,128 +274,139 @@ function Orbit({
     return () => controls.dispose();
   }, [camera, gl]);
 
+  // Settle the target on the endpoint once a transition finishes (and on mount).
   useEffect(() => {
     const controls = ref.current;
-    if (!controls) return;
-    const layoutChanged = prevLayout.current !== layout;
-    prevLayout.current = layout;
-    if (layout === 'grid') {
-      if (layoutChanged) camera.position.set(0, gridCamHeight, 0.001);
-      controls.target.set(0, 0, 0);
-    } else {
-      if (layoutChanged) camera.position.set(62, 48, 80);
-      controls.target.set(0, stackTargetY, 0);
-    }
+    if (!controls || transitioning) return;
+    if (layout === 'grid') controls.target.set(0, 0, gridTargetZ);
+    else controls.target.set(0, stackTargetY, 0);
     controls.update();
-  }, [layout, stackTargetY, gridCamHeight, camera]);
+  }, [layout, transitioning, gridTargetZ, stackTargetY]);
 
   useFrame(() => {
     const controls = ref.current;
     if (!controls) return;
-    controls.autoRotate = layout === 'stack' && autoRotate;
+    if (transitioning) {
+      // Capture the live pose once, then ease from it to the target framing — so
+      // a transition never jumps from a user-orbited angle.
+      if (!animating.current) {
+        fromPos.current.copy(camera.position);
+        fromTarget.current.copy(controls.target);
+        startMorph.current = morph;
+        animating.current = true;
+      }
+      const targetMorph = layout === 'stack' ? 1 : 0;
+      const denom = targetMorph - startMorph.current;
+      const p = smoothstep(denom !== 0 ? (morph - startMorph.current) / denom : 1);
+      const toPos =
+        layout === 'stack'
+          ? new THREE.Vector3(STACK_CAM[0], STACK_CAM[1], STACK_CAM[2])
+          : new THREE.Vector3(0, gridCamHeight, gridTargetZ + 0.001);
+      const toTarget =
+        layout === 'stack'
+          ? new THREE.Vector3(0, stackTargetY, 0)
+          : new THREE.Vector3(0, 0, gridTargetZ);
+      camera.position.lerpVectors(fromPos.current, toPos, p);
+      controls.target.lerpVectors(fromTarget.current, toTarget, p);
+      controls.enabled = false;
+      controls.autoRotate = false;
+    } else {
+      animating.current = false;
+      controls.enabled = true;
+      controls.autoRotate = layout === 'stack' && autoRotate;
+    }
     controls.update();
   });
 
   return null;
 }
 
-/** Faint ground footprint + grid, to anchor orientation under the stack. */
-function GroundPlane({ extent, show }: { extent: WorldExtent; show: boolean }) {
-  if (!show) return null;
+/** Faint ground footprint + grid, fading in toward the stack. */
+function GroundPlane({ extent, opacity }: { extent: WorldExtent; opacity: number }) {
   return (
     <group position={[0, -1.5, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[extent.width, extent.height]} />
-        <meshBasicMaterial color="#11161f" transparent opacity={0.85} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#11161f" transparent opacity={opacity} side={THREE.DoubleSide} />
       </mesh>
       <gridHelper args={[Math.max(extent.width, extent.height), 12, '#2a3344', '#1b2230']} />
     </group>
   );
 }
 
-/** 3D z-stack: permanent base slab + 24 hourly grids stacked up the Y axis. */
-function StackView({
-  base,
-  hours,
-  showPermanent,
+/** The whole scene, morphed between grid (morph 0) and stack (morph 1). */
+function Scene({
+  layers,
+  extent,
   spacing,
   everyN,
   opacity,
   spotlight,
+  showPermanent,
+  showGround,
+  morph,
+  labels,
+  baseLabel,
 }: {
-  base: THREE.BufferGeometry;
-  hours: THREE.BufferGeometry[];
-  showPermanent: boolean;
+  layers: BuiltLayers;
+  extent: WorldExtent;
   spacing: number;
   everyN: number;
   opacity: number;
   spotlight: Spotlight;
+  showPermanent: boolean;
+  showGround: boolean;
+  morph: number;
+  labels: (THREE.Texture | undefined)[];
+  baseLabel: THREE.Texture;
 }) {
+  const m = smoothstep(morph);
+  const baseZ = lerp(baseRowZ(extent), 0, m);
+  const baseScale = lerp(1, BASE_OVERHANG, m);
   return (
     <group>
-      {/* Permanent (non-temporal) risk — a solid, overhanging foundation slab. */}
+      {showGround && m > 0.15 && <GroundPlane extent={extent} opacity={0.85 * m} />}
+
+      {/* Permanent (non-temporal) map: above the grid (morph 0) → foundation slab (morph 1). */}
       {showPermanent && (
-        <group scale={[BASE_OVERHANG, 1, BASE_OVERHANG]}>
-          <mesh geometry={base}>
+        <group position={[0, 0, baseZ]} scale={[baseScale, 1, baseScale]}>
+          <mesh geometry={layers.base}>
             <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
           </mesh>
+          <sprite position={[0, 2, -extent.height / 2 - 6]} scale={[26, 5, 1]}>
+            <spriteMaterial map={baseLabel} transparent opacity={1 - m} depthTest={false} />
+          </sprite>
         </group>
       )}
 
-      {hours.map((geo, h) => {
+      {layers.hours.map((geo, h) => {
+        const [gx, gz] = gridTileXZ(h, extent);
+        const px = lerp(gx, 0, m);
+        const py = lerp(0, spacing * (STACK_START + h), m);
+        const pz = lerp(gz, 0, m);
+        // Opacity morphs from a solid grid tile (1) to its stack value.
         const decimated = h % everyN === 0;
-        let op = opacity;
-        let visible = decimated;
+        let stackOp = opacity;
+        let stackVisible = decimated;
         if (spotlight.on) {
-          if (h === spotlight.hour) {
-            op = 1; // the spotlit hour is solid…
-          } else {
-            visible = decimated && spotlight.showGhosts; // …others keep the slider's opacity
-          }
+          if (h === spotlight.hour) stackOp = 1;
+          else stackVisible = decimated && spotlight.showGhosts;
         }
-        if (!visible) return null;
+        if (!stackVisible) stackOp = 0;
+        const op = lerp(1, stackOp, m);
         return (
-          <mesh key={h} geometry={geo} position={[0, spacing * (STACK_START + h), 0]}>
-            <meshBasicMaterial
-              vertexColors
-              transparent
-              opacity={op}
-              side={THREE.DoubleSide}
-              depthWrite={op >= 1}
-            />
-          </mesh>
-        );
-      })}
-    </group>
-  );
-}
-
-/** 2D small multiples: the 24 hourly grids laid flat in a labelled 6×4. */
-function GridView({
-  hours,
-  extent,
-  labels,
-}: {
-  hours: THREE.BufferGeometry[];
-  extent: WorldExtent;
-  labels: (THREE.Texture | undefined)[];
-}) {
-  const cellW = extent.width + GRID_GAP;
-  const cellH = extent.height + GRID_GAP;
-  return (
-    <group>
-      {hours.map((geo, h) => {
-        const col = h % GRID_COLS;
-        const row = Math.floor(h / GRID_COLS);
-        const x = (col - (GRID_COLS - 1) / 2) * cellW;
-        const z = (row - (GRID_ROWS - 1) / 2) * cellH;
-        return (
-          <group key={h} position={[x, 0, z]}>
+          <group key={h} position={[px, py, pz]}>
             <mesh geometry={geo}>
-              <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
+              <meshBasicMaterial
+                vertexColors
+                transparent
+                opacity={op}
+                side={THREE.DoubleSide}
+                depthWrite={op >= 1}
+              />
             </mesh>
             <sprite position={[0, 2, -extent.height / 2 - 5]} scale={[18, 4.5, 1]}>
-              <spriteMaterial map={labels[h] ?? null} transparent depthTest={false} />
+              <spriteMaterial map={labels[h] ?? null} transparent opacity={1 - m} depthTest={false} />
             </sprite>
           </group>
         );
@@ -388,6 +439,30 @@ export function TemporalSpike() {
   const [spotHour, setSpotHour] = useState(13);
   const [showGhosts, setShowGhosts] = useState(true);
 
+  // Layout morph: 0 = grid, 1 = stack, animated on toggle.
+  const [morph, setMorph] = useState(1);
+  const [transitioning, setTransitioning] = useState(false);
+  const morphRef = useRef(1);
+  useEffect(() => {
+    const target = layout === 'stack' ? 1 : 0;
+    const from = morphRef.current;
+    if (from === target) return;
+    setTransitioning(true);
+    const DURATION = 750;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - start) / DURATION);
+      const value = from + (target - from) * k;
+      morphRef.current = value;
+      setMorph(value);
+      if (k < 1) raf = requestAnimationFrame(tick);
+      else setTransitioning(false);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [layout]);
+
   const cells = grid?.cells;
 
   const layers = useMemo(() => {
@@ -416,7 +491,6 @@ export function TemporalSpike() {
     inset,
   ]);
 
-  // Free GPU buffers when the layer set is rebuilt or the view unmounts.
   useEffect(
     () => () => {
       if (!layers) return;
@@ -426,22 +500,17 @@ export function TemporalSpike() {
     [layers],
   );
 
-  // Hour labels for the grid view, built once.
   const labels = useMemo(() => HOURS.map((h) => makeLabelTexture(formatTime(h * 60))), []);
-  useEffect(() => () => labels.forEach((t) => t.dispose()), [labels]);
+  const baseLabel = useMemo(() => makeLabelTexture('Permanent'), []);
+  useEffect(
+    () => () => {
+      labels.forEach((t) => t.dispose());
+      baseLabel.dispose();
+    },
+    [labels, baseLabel],
+  );
 
-  // Camera height that frames the whole 6×4 grid from above.
-  const gridCamHeight = useMemo(() => {
-    const gw = GRID_COLS * (extent.width + GRID_GAP);
-    const gd = GRID_ROWS * (extent.height + GRID_GAP);
-    const vfov = (45 * Math.PI) / 180;
-    const aspect =
-      typeof window !== 'undefined' && window.innerHeight > 0
-        ? window.innerWidth / window.innerHeight
-        : 1.6;
-    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
-    return Math.max(gw / 2 / Math.tan(hfov / 2), gd / 2 / Math.tan(vfov / 2)) * 1.12;
-  }, [extent]);
+  const framing = useMemo(() => gridFraming(extent), [extent]);
 
   if (!grid || !cells || !layers) return <div className="spike-loading">Building world…</div>;
 
@@ -452,26 +521,26 @@ export function TemporalSpike() {
     <div className="spike-root">
       <Canvas camera={{ position: [62, 48, 80], fov: 45, far: 4000 }}>
         <color attach="background" args={['#0b0e14']} />
-        {layout === 'stack' ? (
-          <>
-            <GroundPlane extent={extent} show={showGround} />
-            <StackView
-              base={layers.base}
-              hours={layers.hours}
-              showPermanent={showPermanent}
-              spacing={spacing}
-              everyN={everyN}
-              opacity={opacity}
-              spotlight={spotlight}
-            />
-          </>
-        ) : (
-          <GridView hours={layers.hours} extent={extent} labels={labels} />
-        )}
+        <Scene
+          layers={layers}
+          extent={extent}
+          spacing={spacing}
+          everyN={everyN}
+          opacity={opacity}
+          spotlight={spotlight}
+          showPermanent={showPermanent}
+          showGround={showGround}
+          morph={morph}
+          labels={labels}
+          baseLabel={baseLabel}
+        />
         <Orbit
           layout={layout}
+          transitioning={transitioning}
+          morph={morph}
+          gridCamHeight={framing.height}
+          gridTargetZ={framing.targetZ}
           stackTargetY={stackTargetY}
-          gridCamHeight={gridCamHeight}
           autoRotate={autoRotate}
         />
       </Canvas>
@@ -483,8 +552,8 @@ export function TemporalSpike() {
       <div className="spike-panel">
         <h1>Temporal risk — spike</h1>
         <p className="sub">
-          {cells.length} cells · 24 hours (00:00 → 23:00). Compare the 3D stack against 2D small
-          multiples.
+          {cells.length} cells · 24 hours (00:00 → 23:00). Toggle Layout to morph between the 3D
+          stack and 2D small multiples.
         </p>
 
         <div className="spike-row">
@@ -519,6 +588,16 @@ export function TemporalSpike() {
             onChange={(e) => setInset(Number(e.target.value))}
           />
           <span className="spike-val">{inset.toFixed(2)}</span>
+        </div>
+
+        <div className="spike-row">
+          <label htmlFor="permanent">Permanent risk grid</label>
+          <input
+            id="permanent"
+            type="checkbox"
+            checked={showPermanent}
+            onChange={(e) => setShowPermanent(e.target.checked)}
+          />
         </div>
 
         {layout === 'stack' && (
@@ -604,16 +683,6 @@ export function TemporalSpike() {
             )}
 
             <div className="spike-row">
-              <label htmlFor="permanent">Permanent risk grid</label>
-              <input
-                id="permanent"
-                type="checkbox"
-                checked={showPermanent}
-                onChange={(e) => setShowPermanent(e.target.checked)}
-              />
-            </div>
-
-            <div className="spike-row">
               <label htmlFor="ground">Ground plane</label>
               <input
                 id="ground"
@@ -643,8 +712,8 @@ export function TemporalSpike() {
           </p>
         ) : (
           <p className="spike-note">
-            24 hourly maps as small multiples (00:00 → 23:00), read left-to-right, top-to-bottom.
-            Same data and colour scale as the stack. Scroll to zoom; drag to tilt.
+            24 hourly maps as small multiples (00:00 → 23:00), with the permanent (non-temporal) map
+            on its own above them. Same data and colour scale as the stack.
           </p>
         )}
         <p className="spike-note">
