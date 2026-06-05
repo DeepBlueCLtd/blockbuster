@@ -587,9 +587,10 @@ function TimeWheel({
     };
     inertiaRaf.current = requestAnimationFrame(step);
   };
-  // Wheel over the controller scrubs time a slice at a time. Native + non-passive
-  // so it can preventDefault — which also stops the page and the native <select>
-  // from cycling when the pointer is over the interval dropdown.
+  // Wheel over the controller scrubs time a slice at a time; Ctrl+wheel zooms the
+  // time step instead, staying on the current time. Native + non-passive so it can
+  // preventDefault — which also stops page zoom and the native <select> cycling
+  // when the pointer is over the interval dropdown.
   useEffect(() => {
     const el = wheelRef.current;
     if (!el) return;
@@ -599,16 +600,26 @@ function TimeWheel({
         cancelAnimationFrame(inertiaRaf.current);
         inertiaRaf.current = 0;
       }
-      if (e.deltaY === 0) return;
+      const dir = Math.sign(e.deltaY);
+      if (dir === 0) return;
+      if (e.ctrlKey) {
+        // Zoom the step: scroll up = finer, down = coarser. The interval effect
+        // re-snaps the current time, and the window tightens around it.
+        const i = INTERVAL_OPTIONS.findIndex((x) => x === cfgRef.current.interval);
+        const ni = clampN((i < 0 ? 1 : i) + dir, 0, INTERVAL_OPTIONS.length - 1);
+        const step = INTERVAL_OPTIONS[ni];
+        if (step !== undefined && step !== cfgRef.current.interval) setIntervalMin(step);
+        return;
+      }
       const { interval, max } = cfgRef.current;
       const slice = Math.round(curRef.current / interval);
-      const next = clampN((slice + Math.sign(e.deltaY)) * interval, 0, max);
+      const next = clampN((slice + dir) * interval, 0, max);
       curRef.current = next;
       setCurrentMin(next);
     };
     el.addEventListener('wheel', onWheelNative, { passive: false });
     return () => el.removeEventListener('wheel', onWheelNative);
-  }, [setCurrentMin]);
+  }, [setCurrentMin, setIntervalMin]);
 
   const cur = Math.round(currentMin / intervalMin);
   const ticks: { idx: number; y: number; label: string; current: boolean }[] = [];
@@ -648,7 +659,7 @@ function TimeWheel({
           </div>
         ))}
       </div>
-      <div className="spike-wheel-hint">drag ↕ or scroll · flick to spin</div>
+      <div className="spike-wheel-hint">drag ↕ or scroll · ctrl-scroll = zoom step · flick to spin</div>
     </div>
   );
 }
