@@ -1,20 +1,30 @@
-import { Polygon, Polyline } from 'react-leaflet';
+import { Pane, Polygon, Polyline } from 'react-leaflet';
 import type { PathOptions } from 'leaflet';
 import type { WorldPoint } from '@domain';
-import { cycloneEyeAt, windAt } from '@domain';
+import { cycloneEyeAt, windAt, windEffect } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { RISK_COLORS } from '@/ui/theme';
 import { worldRingToLatLng } from './projection';
 
 /**
- * Read-only overlay of the cyclone at the current `displayTime`: its outer reach,
- * eyewall and calm eye as rings, plus a coarse field of arrows showing the wind
- * direction (anticlockwise) and strength. Purely visual — it never mutates state
- * and is non-interactive, so it never steals clicks from the hex grid. Hidden
- * when the wind toggle is off or the cyclone is inactive at `displayTime`.
+ * Read-only overlay of the cyclone, in two parts so users can see both the wind
+ * and what it *does*:
+ *
+ *  1. **The field** at the current `displayTime` — the eye, its outer reach and
+ *     eyewall as rings, plus a coarse grid of arrows pointing the way the wind
+ *     blows (anticlockwise), longer/brighter where it is stronger.
+ *  2. **The influence on the route** — chevrons along the selected COA, coloured
+ *     green where the wind is behind the group (a tailwind: faster, safer) and
+ *     red where they head into it (a headwind: slower, riskier), sized by how
+ *     strong that head/tail component is at the moment they pass through.
+ *
+ * Purely visual: non-interactive, never mutates state. Hidden when the wind
+ * toggle is off or the cyclone is inactive at `displayTime`.
  */
 
 const WIND_COLOR = RISK_COLORS.cold; // tie the wind to the cold it drives
+const TAILWIND_COLOR = '#2e7d32'; // green — the wind helps here
+const HEADWIND_COLOR = '#c62828'; // red — the wind fights here
 
 /** A closed ring of `segments` points approximating a circle in world km. */
 function worldCircleRing(center: WorldPoint, radiusKm: number, segments = 48): WorldPoint[] {
@@ -26,6 +36,13 @@ function worldCircleRing(center: WorldPoint, radiusKm: number, segments = 48): W
   return out;
 }
 
+function unit(from: WorldPoint, to: WorldPoint): WorldPoint | null {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy);
+  return len <= 1e-9 ? null : { x: dx / len, y: dy / len };
+}
+
 /** A 5-point polyline (shaft + arrowhead) centred at `p`, pointing along `dir`. */
 function arrowPoints(p: WorldPoint, dir: WorldPoint, len: number): WorldPoint[] {
   const half = len / 2;
@@ -33,7 +50,7 @@ function arrowPoints(p: WorldPoint, dir: WorldPoint, len: number): WorldPoint[] 
   const tail = { x: p.x - dir.x * half, y: p.y - dir.y * half };
   const back = { x: head.x - dir.x * len * 0.4, y: head.y - dir.y * len * 0.4 };
   const perp = { x: -dir.y, y: dir.x };
-  const wing = len * 0.22;
+  const wing = len * 0.26;
   return [
     tail,
     head,
@@ -43,19 +60,35 @@ function arrowPoints(p: WorldPoint, dir: WorldPoint, len: number): WorldPoint[] 
   ];
 }
 
+/** A chevron "›" centred at `p`, its tip pointing along `dir`. */
+function chevronPoints(p: WorldPoint, dir: WorldPoint, size: number): WorldPoint[] {
+  const tip = { x: p.x + dir.x * size * 0.5, y: p.y + dir.y * size * 0.5 };
+  const back = { x: p.x - dir.x * size * 0.5, y: p.y - dir.y * size * 0.5 };
+  const perp = { x: -dir.y, y: dir.x };
+  return [
+    { x: back.x + perp.x * size * 0.6, y: back.y + perp.y * size * 0.6 },
+    tip,
+    { x: back.x - perp.x * size * 0.6, y: back.y - perp.y * size * 0.6 },
+  ];
+}
+
 export function WindLayer() {
   const cyclone = useBlockbusterStore((s) => s.cyclone);
   const showWind = useBlockbusterStore((s) => s.showWind);
+  const showRoutes = useBlockbusterStore((s) => s.showRoutes);
   const displayTime = useBlockbusterStore((s) => s.displayTime);
   const extent = useBlockbusterStore((s) => s.extent);
+  const grid = useBlockbusterStore((s) => s.grid);
+  const plan = useBlockbusterStore((s) => s.plan);
+  const selectedCoaId = useBlockbusterStore((s) => s.selectedCoaId);
 
   if (!showWind || !cyclone) return null;
   const eye = cycloneEyeAt(cyclone, displayTime);
   if (!eye) return null;
 
-  // Coarse sample grid for the arrow field.
-  const step = Math.min(6, Math.max(2.5, Math.min(extent.width, extent.height) / 12));
-  const arrowLen = step * 0.8;
+  // 1) The wind field: a coarse grid of direction arrows at the display time.
+  const step = Math.min(6, Math.max(3, Math.min(extent.width, extent.height) / 8));
+  const arrowLen = step * 0.85;
   const arrows: { points: WorldPoint[]; opacity: number; key: string }[] = [];
   for (let x = step / 2; x < extent.width; x += step) {
     for (let y = step / 2; y < extent.height; y += step) {
@@ -63,8 +96,34 @@ export function WindLayer() {
       if (!w || w.strength < 0.08) continue;
       arrows.push({
         points: arrowPoints({ x, y }, w.dir, arrowLen * (0.45 + 0.55 * w.strength)),
-        opacity: 0.25 + 0.55 * w.strength,
+        opacity: 0.3 + 0.55 * w.strength,
         key: `${x.toFixed(1)},${y.toFixed(1)}`,
+      });
+    }
+  }
+
+  // 2) The route influence: head/tail chevrons along the selected (else best) COA.
+  // Each segment is judged by the wind the group actually meets when it gets there
+  // (the step's own arrival time), so this shows the journey's real experience.
+  const coa = plan?.coas.find((c) => c.id === selectedCoaId) ?? plan?.coas[0];
+  const chevrons: { points: WorldPoint[]; color: string; opacity: number; key: string }[] = [];
+  if (showRoutes && grid && coa) {
+    for (let i = 1; i < coa.path.length; i++) {
+      const from = grid.get(coa.path[i - 1]!)?.center;
+      const to = grid.get(coa.path[i]!)?.center;
+      const arrivalMin = coa.steps[i]?.arrivalTimeMinutes;
+      if (!from || !to || arrivalMin === undefined) continue;
+      const dir = unit(from, to);
+      if (!dir) continue;
+      const w = windAt(cyclone, to, arrivalMin);
+      const influence = windEffect(dir, w).speedFactor - 1; // >0 tailwind, <0 headwind
+      if (Math.abs(influence) < 0.02) continue;
+      const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+      chevrons.push({
+        points: chevronPoints(mid, dir, Math.min(extent.width, extent.height) / 18),
+        color: influence > 0 ? TAILWIND_COLOR : HEADWIND_COLOR,
+        opacity: Math.min(0.95, 0.45 + Math.abs(influence) * 1.4),
+        key: `chev-${i}`,
       });
     }
   }
@@ -114,6 +173,17 @@ export function WindLayer() {
           pathOptions={{ color: WIND_COLOR, weight: 2, opacity: a.opacity }}
         />
       ))}
+      {/* Route chevrons sit in the topmost vector pane so they read over the COA line. */}
+      <Pane name="wind-influence" style={{ zIndex: 440 }}>
+        {chevrons.map((c) => (
+          <Polyline
+            key={c.key}
+            positions={worldRingToLatLng(c.points)}
+            interactive={false}
+            pathOptions={{ color: c.color, weight: 4, opacity: c.opacity, lineCap: 'round' }}
+          />
+        ))}
+      </Pane>
     </>
   );
 }

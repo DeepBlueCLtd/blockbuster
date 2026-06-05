@@ -122,6 +122,22 @@ body,
   right: 10px;
 }
 
+/* Centre the wind key along the bottom, clear of the corner legends. */
+.map-legend--wind {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  max-width: none;
+}
+
+.map-legend--wind .wind-glyph {
+  width: auto;
+  height: auto;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 /* --- Side pane --- */
 .side-pane {
   display: flex;

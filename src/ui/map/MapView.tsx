@@ -12,6 +12,7 @@ import { WindLayer } from './WindLayer';
 import { MapToolbar } from './MapToolbar';
 import { BiomeLegend } from './BiomeLegend';
 import { RiskPieLegend } from './RiskPieLegend';
+import { WindLegend } from './WindLegend';
 import { ExtraRiskLayer } from './extra-risk/ExtraRiskLayer';
 import { ExtraRiskDraw } from './extra-risk/ExtraRiskDraw';
 
@@ -55,6 +56,7 @@ export function MapView() {
       </MapContainer>
       <BiomeLegend />
       <RiskPieLegend />
+      <WindLegend />
     </div>
   );
 }
