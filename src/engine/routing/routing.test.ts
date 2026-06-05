@@ -113,7 +113,13 @@ describe('routing core (spec)', () => {
 
   it('lowering appetite for a risk steers routes away from that risk', () => {
     const { grid, risk, start, end } = bandScenario(9, 3);
-    const base: RouteRequest = { grid, risk, params: DEFAULT_COST_PARAMS, waypoints: [start, end], coaCount: 1 };
+    const base: RouteRequest = {
+      grid,
+      risk,
+      params: DEFAULT_COST_PARAMS,
+      waypoints: [start, end],
+      coaCount: 1,
+    };
 
     const tolerant = appetiteFor(DEFAULT_COST_PARAMS, 1); // ignore human
     const intolerant = appetiteFor(DEFAULT_COST_PARAMS, 0); // avoid human
@@ -237,3 +243,87 @@ describe('routing core (optimise order)', () => {
 function appetiteFor(params: CostParams, humanAppetite: number): CostParams {
   return { ...params, appetite: { ...params.appetite, human: humanAppetite } };
 }
+
+/**
+ * A single east–west corridor of `n` cells at y = 0, each carrying a uniform
+ * baseline of cold + human risk for the wind to act on. With no vertical
+ * neighbours the only path is the straight line, so wind comparisons are
+ * apples-to-apples (same path, different cost/timing).
+ */
+function corridorScenario(n: number) {
+  const cells: HexGridDto['cells'] = [];
+  const risk: Record<CellId, RiskProfile> = {};
+  for (let q = 0; q < n; q++) {
+    const id = toCellId({ q, r: 0 });
+    cells.push({ id, q, r: 0, center: { x: SQRT3 * q, y: 0 } });
+    risk[id] = { animals: 0, cold: 0.3, heat: 0, water: 0, human: 0.3 };
+  }
+  const grid: HexGridDto = {
+    layout: { orientation: 'pointy', size: 1, origin: { x: 0, y: 0 } },
+    extent: { width: SQRT3 * n, height: 3 },
+    cells,
+  };
+  return { grid, risk, west: toCellId({ q: 0, r: 0 }), east: toCellId({ q: n - 1, r: 0 }) };
+}
+
+describe('routing core (cyclone wind)', () => {
+  const scen = corridorScenario(8);
+  // Eye parked due south of the corridor, so the wind blows ~due west along it:
+  // travelling east is a headwind, travelling west a tailwind.
+  const cyclone = {
+    id: 'c',
+    name: 'c',
+    from: { x: SQRT3 * 4, y: -10 },
+    to: { x: SQRT3 * 4, y: -10 },
+    startTime: 0,
+    endTime: 1440,
+    eyeRadiusKm: 0.5,
+    maxWindRadiusKm: 3,
+    outerRadiusKm: 40,
+    strength: 1,
+    enabled: true,
+  };
+
+  function corridorRequest(waypoints: CellId[], withCyclone: boolean): RouteRequest {
+    return {
+      grid: scen.grid,
+      risk: scen.risk,
+      params: DEFAULT_COST_PARAMS,
+      waypoints,
+      coaCount: 1,
+      journeyParams: { startTime: 8 * 60, speedMode: 'fixed', fixedSpeedKmh: 15 },
+      dayNight: { enabled: false },
+      timeVaryingZones: [],
+      waypointWindows: [null, null],
+      ...(withCyclone ? { cyclone } : {}),
+    };
+  }
+
+  const sumRisk = (coa: { riskTotals: RiskProfile }) =>
+    RISK_TYPES.reduce((s, r) => s + coa.riskTotals[r], 0);
+
+  const eastNoWind = planRoutes(corridorRequest([scen.west, scen.east], false)).coas[0]!;
+  const eastHead = planRoutes(corridorRequest([scen.west, scen.east], true)).coas[0]!;
+  const westTail = planRoutes(corridorRequest([scen.east, scen.west], true)).coas[0]!;
+
+  it('leaves the path unchanged in the corridor (only cost/timing move)', () => {
+    expect(eastHead.path).toEqual(eastNoWind.path);
+  });
+
+  it('slows the group into the wind (later arrival than with no wind)', () => {
+    expect(eastHead.arrivalTimeMinutes).toBeGreaterThan(eastNoWind.arrivalTimeMinutes);
+  });
+
+  it('speeds the group up with the wind (earlier arrival than with no wind)', () => {
+    const westNoWind = planRoutes(corridorRequest([scen.east, scen.west], false)).coas[0]!;
+    expect(westTail.arrivalTimeMinutes).toBeLessThan(westNoWind.arrivalTimeMinutes);
+  });
+
+  it('costs more heading into the wind than running with it', () => {
+    expect(sumRisk(eastHead)).toBeGreaterThan(sumRisk(westTail));
+    // Cold in particular is punished into the wind and eased with it.
+    expect(eastHead.riskTotals.cold).toBeGreaterThan(westTail.riskTotals.cold);
+    // A non-cold channel falls below its no-wind level on a tailwind.
+    expect(westTail.riskTotals.human).toBeLessThan(eastNoWind.riskTotals.human);
+  });
+});

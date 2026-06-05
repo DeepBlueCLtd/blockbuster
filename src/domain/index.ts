@@ -14,6 +14,7 @@ export * from './hex';
 export * from './geometry';
 export * from './risk';
 export * from './zone';
+export * from './wind';
 export * from './cost';
 export * from './journey';
 export * from './routing';

@@ -4,8 +4,8 @@
  * — handy for isolated or headless inspection of the WebGL render.
  *
  * It drives the *real* store: regenerating a world now seeds day/night and a
- * default storm band (see `regenerate` in the store), so the stacked hours carry
- * genuine temporal structure to look through — nothing bespoke here.
+ * cyclone (see `regenerate` in the store), so the stacked hours carry genuine
+ * temporal structure to look through — nothing bespoke here.
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

@@ -8,6 +8,7 @@ import { RiskPieLayer } from './RiskPieLayer';
 import { RiskBarLayer } from './RiskBarLayer';
 import { RiskStackLayer } from './RiskStackLayer';
 import { RouteLayer } from './RouteLayer';
+import { WindLayer } from './WindLayer';
 import { MapToolbar } from './MapToolbar';
 import { BiomeLegend } from './BiomeLegend';
 import { RiskPieLegend } from './RiskPieLegend';
@@ -48,6 +49,7 @@ export function MapView() {
         <RiskBarLayer />
         <RiskStackLayer />
         <RouteLayer />
+        <WindLayer />
         <ExtraRiskLayer />
         {activeTab === 'extra' && <ExtraRiskDraw />}
       </MapContainer>

@@ -3,6 +3,7 @@ import type {
   Coa,
   CoaCellStep,
   CostParams,
+  Cyclone,
   DayNightConfig,
   HexGridDto,
   JourneyParams,
@@ -12,15 +13,18 @@ import type {
   RoutePlan,
   RouteRequest,
   TimeWindow,
+  WindEffect,
   WorldExtent,
   WorldPoint,
 } from '@domain';
 import {
   applyTemporalModifiers,
+  applyWindRisk,
   applyZoneOffsets,
   cellRiskCost,
   DEFAULT_DAY_NIGHT,
   DEFAULT_JOURNEY_PARAMS,
+  IDENTITY_WIND_EFFECT,
   isPointInPolygon,
   isZoneActiveAt,
   movementCost,
@@ -31,6 +35,8 @@ import {
   SPEED_MIN_KMH,
   speedModifiedProfile,
   toCellId,
+  windAt,
+  windEffect,
   worldDistance,
 } from '@domain';
 
@@ -209,6 +215,8 @@ interface TemporalContext {
   waypoints: readonly CellId[];
   /** Town cells; their human risk dips in the 01:00–05:00 deep-sleep window. */
   towns: ReadonlySet<CellId>;
+  /** Cyclone wind field (directional risk + speed), or null when there is none. */
+  cyclone: Cyclone | null;
 }
 
 /** A no-op temporal context used in time-agnostic calls (TSP ordering etc.). */
@@ -221,6 +229,7 @@ const EMPTY_TEMPORAL: TemporalContext = {
   waypointWindows: [],
   waypoints: [],
   towns: new Set(),
+  cyclone: null,
 };
 
 /**
@@ -247,7 +256,30 @@ function applyTimeVaryingZones(
   return applyZoneOffsets(profile, offsets);
 }
 
-/** Full modifier chain: speed → day/night → time-varying zones. */
+/**
+ * Wind effect for entering a cell: the local wind (at the cell centre + arrival
+ * time) crossed with the edge heading (from → to). Identity when there is no
+ * cyclone, no wind there, or the cells lack centres.
+ */
+function windEffectFor(
+  temporal: TemporalContext,
+  fromCenter: WorldPoint | undefined,
+  toCenter: WorldPoint | undefined,
+  arrivalTimeMin: number,
+): WindEffect {
+  if (!temporal.cyclone || !fromCenter || !toCenter) return IDENTITY_WIND_EFFECT;
+  const wind = windAt(temporal.cyclone, toCenter, arrivalTimeMin);
+  if (!wind) return IDENTITY_WIND_EFFECT;
+  return windEffect({ x: toCenter.x - fromCenter.x, y: toCenter.y - fromCenter.y }, wind);
+}
+
+/**
+ * Full modifier chain: speed → day/night → time-varying zones → wind. `speed` is
+ * the group's chosen travel speed (the cold/wind-chill coupling keys off it); the
+ * cyclone's own directional risk arrives via the precomputed {@link WindEffect}
+ * (its speed factor affects travel *time*, applied by the caller, not the cold
+ * coupling here).
+ */
 function applyAllModifiers(
   profile: RiskProfile,
   cellId: CellId,
@@ -255,10 +287,12 @@ function applyAllModifiers(
   arrivalTimeMin: number,
   speed: number,
   temporal: TemporalContext,
+  wind: WindEffect,
 ): RiskProfile {
   let p = speedModifiedProfile(profile, speed);
   p = applyTemporalModifiers(p, arrivalTimeMin, temporal.dayNight, temporal.towns.has(cellId));
   p = applyTimeVaryingZones(p, cellCenter, arrivalTimeMin, temporal);
+  p = applyWindRisk(p, wind);
   return p;
 }
 
@@ -358,7 +392,16 @@ function aStar(
         for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
           const legTime = (legDistKm / s) * 60;
           const arr = temporal.journeyParams.startTime + legStartTimeMin + curTimeMin + legTime;
-          const prof = applyAllModifiers(graph.riskAt(next), next, toCenter, arr, s, temporal);
+          const wind = windEffectFor(temporal, fromCenter, toCenter, arr);
+          const prof = applyAllModifiers(
+            graph.riskAt(next),
+            next,
+            toCenter,
+            arr,
+            s,
+            temporal,
+            wind,
+          );
           const base = movementCost(legDistKm, params) + cellRiskCost(prof, params);
           if (base < bestBase) {
             bestBase = base;
@@ -372,7 +415,16 @@ function aStar(
       } else {
         arrivalMin = temporal.journeyParams.startTime + (totalDistKm / fixedSpeed) * 60;
         newTimeMin = curTimeMin + (legDistKm / fixedSpeed) * 60;
-        const profile = applyAllModifiers(graph.riskAt(next), next, toCenter, arrivalMin, fixedSpeed, temporal);
+        const wind = windEffectFor(temporal, fromCenter, toCenter, arrivalMin);
+        const profile = applyAllModifiers(
+          graph.riskAt(next),
+          next,
+          toCenter,
+          arrivalMin,
+          fixedSpeed,
+          temporal,
+          wind,
+        );
         const base = movementCost(legDistKm, params) + cellRiskCost(profile, params);
         edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
       }
@@ -424,7 +476,10 @@ function leg(
       : null;
   return (
     withBlocks ??
-    aStar(graph, a, b, params, usage, NO_BLOCKS, temporal, legStartDistKm, legStartTimeMin) ?? [a, b]
+    aStar(graph, a, b, params, usage, NO_BLOCKS, temporal, legStartDistKm, legStartTimeMin) ?? [
+      a,
+      b,
+    ]
   );
 }
 
@@ -502,44 +557,68 @@ function buildCoa(
   ) as number[];
 
   path.forEach((cellId, i) => {
+    const prevCenter = i > 0 ? graph.centerOf(path[i - 1]!) : undefined;
+    const cellCenter = graph.centerOf(cellId);
     let legKm = 0;
     let move = 0;
-    if (i > 0) {
-      const a = graph.centerOf(path[i - 1]!);
-      const b = graph.centerOf(cellId);
-      if (a && b) {
-        legKm = worldDistance(a, b);
-        totalDistanceKm += legKm;
-        move = movementCost(legKm, params);
-      }
+    if (i > 0 && prevCenter && cellCenter) {
+      legKm = worldDistance(prevCenter, cellCenter);
+      totalDistanceKm += legKm;
+      move = movementCost(legKm, params);
     }
 
-    // Dynamic: pick the speed that minimises entry cost at this step.
-    // Use cumulative time (not total distance / speed) for accurate arrival estimate.
-    const cellCenter = graph.centerOf(cellId);
-    let chosenSpeed: number;
+    // Base (chosen) travel speed. Dynamic mode picks whichever speed extreme
+    // minimises this cell's entry cost — evaluated with the wind in play, using a
+    // base-speed arrival estimate to look the wind up.
+    let baseSpeed: number;
     if (isDynamic) {
       let bestCost = Infinity;
-      chosenSpeed = SPEED_MIN_KMH;
+      baseSpeed = SPEED_MIN_KMH;
       for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
         const legTime = i > 0 && legKm > 0 ? (legKm / s) * 60 : 0;
         const arr = temporal.journeyParams.startTime + cumulativeTimeMin + legTime;
-        const prof = applyAllModifiers(graph.riskAt(cellId), cellId, cellCenter, arr, s, temporal);
+        const wind = windEffectFor(temporal, prevCenter, cellCenter, arr);
+        const prof = applyAllModifiers(
+          graph.riskAt(cellId),
+          cellId,
+          cellCenter,
+          arr,
+          s,
+          temporal,
+          wind,
+        );
         const cost = move + cellRiskCost(prof, params);
         if (cost < bestCost) {
           bestCost = cost;
-          chosenSpeed = s;
+          baseSpeed = s;
         }
       }
     } else {
-      chosenSpeed = fixedSpeed;
+      baseSpeed = fixedSpeed;
     }
 
-    if (i > 0 && legKm > 0) cumulativeTimeMin += (legKm / chosenSpeed) * 60;
+    // The wind (sampled at the base-speed arrival estimate) drives both the
+    // directional risk and the effective travel speed for this leg, so a headwind
+    // both costs more and takes longer (a tailwind, less and quicker).
+    const arrEst =
+      temporal.journeyParams.startTime +
+      cumulativeTimeMin +
+      (i > 0 && legKm > 0 ? (legKm / baseSpeed) * 60 : 0);
+    const wind = windEffectFor(temporal, prevCenter, cellCenter, arrEst);
+    const effSpeed = baseSpeed * wind.speedFactor;
+    if (i > 0 && legKm > 0) cumulativeTimeMin += (legKm / effSpeed) * 60;
     const arrivalMin = temporal.journeyParams.startTime + cumulativeTimeMin;
 
-    // Apply same modifier chain as A* for consistency.
-    const profile = applyAllModifiers(graph.riskAt(cellId), cellId, cellCenter, arrivalMin, chosenSpeed, temporal);
+    // Same modifier chain as A* (keyed off the wind-adjusted arrival time).
+    const profile = applyAllModifiers(
+      graph.riskAt(cellId),
+      cellId,
+      cellCenter,
+      arrivalMin,
+      baseSpeed,
+      temporal,
+      wind,
+    );
     const perRisk = riskCostBreakdown(profile, params);
 
     let stepCost = move;
@@ -548,14 +627,22 @@ function buildCoa(
       stepCost += perRisk[r];
     }
     totalCost += stepCost;
-    steps.push({ cellId, perRisk, movementCost: move, stepCost, arrivalTimeMinutes: arrivalMin, speedKmh: chosenSpeed });
+    steps.push({
+      cellId,
+      perRisk,
+      movementCost: move,
+      stepCost,
+      arrivalTimeMinutes: arrivalMin,
+      speedKmh: effSpeed,
+    });
 
     // Record arrival time at each waypoint.
     const wpIdx = temporal.waypoints.indexOf(cellId);
     if (wpIdx >= 0) waypointArrivals[wpIdx] = arrivalMin;
   });
 
-  const lastArrival = steps[steps.length - 1]?.arrivalTimeMinutes ?? temporal.journeyParams.startTime;
+  const lastArrival =
+    steps[steps.length - 1]?.arrivalTimeMinutes ?? temporal.journeyParams.startTime;
 
   // Auto-shift departure time to satisfy violated 'earliest' arrival constraints.
   // If any waypoint window requires arriving later than the route naturally does,
@@ -574,7 +661,10 @@ function buildCoa(
   if (startShift > 0) {
     const shiftedTemporal: TemporalContext = {
       ...temporal,
-      journeyParams: { ...temporal.journeyParams, startTime: temporal.journeyParams.startTime + startShift },
+      journeyParams: {
+        ...temporal.journeyParams,
+        startTime: temporal.journeyParams.startTime + startShift,
+      },
     };
     return buildCoa(id, label, path, graph, params, shiftedTemporal);
   }
@@ -693,17 +783,26 @@ function planFixed(
   for (const strategy of STRATEGIES) {
     if (accepted.length >= coaCount) break;
     accept(
-      pathThroughSequence(graph, sequence, scaleParams(params, strategy), NO_USAGE, blocked, temporal),
+      pathThroughSequence(
+        graph,
+        sequence,
+        scaleParams(params, strategy),
+        NO_USAGE,
+        blocked,
+        temporal,
+      ),
       true,
     );
   }
   // 2) Fan out under real params, penalising used cells.
   for (let guard = 0; accepted.length < coaCount && guard < coaCount + 2; guard++) {
-    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), true)) break;
+    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), true))
+      break;
   }
   // 3) Fill with relaxed distinctness if still short.
   for (let guard = 0; accepted.length < coaCount && guard < coaCount + 2; guard++) {
-    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), false)) break;
+    if (!accept(pathThroughSequence(graph, sequence, params, usage, blocked, temporal), false))
+      break;
   }
   return accepted;
 }
@@ -769,9 +868,11 @@ export function planRoutes(request: RouteRequest): RoutePlan {
     timeVaryingZones: request.timeVaryingZones ?? [],
     extent: request.grid.extent,
     hexSizeKm: request.grid.layout.size,
-    waypointWindows: request.waypointWindows ?? Array<TimeWindow | null>(request.waypoints.length).fill(null),
+    waypointWindows:
+      request.waypointWindows ?? Array<TimeWindow | null>(request.waypoints.length).fill(null),
     waypoints: request.waypoints,
     towns: new Set(request.towns ?? []),
+    cyclone: request.cyclone ?? null,
   };
 
   let coas: Coa[];

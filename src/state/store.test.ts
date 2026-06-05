@@ -89,13 +89,13 @@ describe('store — extra-risk zones', () => {
     expect(store.getState().zoneRiskType).toBe('heat');
   });
 
-  it('seeds a default storm band on every generated world', () => {
+  it('seeds a default cyclone on every generated world (no default zones)', () => {
     store.getState().regenerate(1);
-    const zones = store.getState().zones;
-    expect(zones).toHaveLength(1);
-    expect(zones[0]?.id).toBe('default-storm');
-    expect(zones[0]?.risk).toBe('cold');
-    expect(zones[0]?.motion?.type).toBe('linear-sweep');
+    expect(store.getState().zones).toHaveLength(0);
+    const cyclone = store.getState().cyclone;
+    expect(cyclone?.id).toBe('default-cyclone');
+    expect(cyclone?.enabled).toBe(true);
+    expect(cyclone?.outerRadiusKm).toBeGreaterThan(0);
   });
 
   it('enables day/night on every generated world, re-enabling it on regenerate', () => {
@@ -107,24 +107,23 @@ describe('store — extra-risk zones', () => {
     expect(store.getState().dayNight.enabled).toBe(true);
   });
 
-  it('keeps analyst zones on a same-seed rebuild and drops them on a new seed, always refreshing one default storm', () => {
+  it('keeps analyst zones on a same-seed rebuild and drops them on a new seed, always re-seeding the cyclone', () => {
     store.getState().regenerate(1);
     store.getState().addZone(makeZone('a'));
-    expect(store.getState().zones).toHaveLength(2); // default storm + 'a'
+    expect(store.getState().zones).toHaveLength(1); // analyst zone only — no default zone
 
-    // A same-seed rebuild (e.g. a hex-size change) keeps analyst zones; the
-    // default storm is re-seeded, so there is still exactly one copy of it.
+    // A same-seed rebuild (e.g. a hex-size change) keeps analyst zones and
+    // re-seeds the cyclone.
     store.getState().regenerate(1);
     const sameSeed = store.getState().zones;
-    expect(sameSeed).toHaveLength(2);
-    expect(sameSeed.filter((z) => z.id === 'default-storm')).toHaveLength(1);
+    expect(sameSeed).toHaveLength(1);
     expect(sameSeed.some((z) => z.id === 'a')).toBe(true);
+    expect(store.getState().cyclone?.id).toBe('default-cyclone');
 
-    // A new seed is a new basemap: analyst zones are dropped, the storm remains.
+    // A new seed is a new basemap: analyst zones are dropped; the cyclone remains.
     store.getState().regenerate(2);
-    const newSeed = store.getState().zones;
-    expect(newSeed).toHaveLength(1);
-    expect(newSeed[0]?.id).toBe('default-storm');
+    expect(store.getState().zones).toHaveLength(0);
+    expect(store.getState().cyclone?.id).toBe('default-cyclone');
     expect(store.getState().selectedZoneId).toBeNull();
   });
 

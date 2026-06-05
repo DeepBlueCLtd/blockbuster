@@ -18,7 +18,7 @@ import {
   clamp01,
   clampZoneOffset,
   coverageFraction,
-  createStormBand,
+  createDefaultCyclone,
   DEFAULT_COST_PARAMS,
   DEFAULT_DAY_NIGHT,
   DEFAULT_EXTENT,
@@ -34,12 +34,6 @@ import {
 } from '@domain';
 import { createEngine } from '@/engine';
 import type { BlockbusterState } from './types';
-
-/**
- * Stable id for the storm band every generated world carries, so `regenerate`
- * can refresh exactly that zone without disturbing analyst-drawn ones.
- */
-const DEFAULT_STORM_ID = 'default-storm';
 
 /**
  * Per-cell, area-weighted offsets for always-active, static zones only.
@@ -62,10 +56,7 @@ function computeZoneContribution(
 }
 
 /** Keep waypointWindows array in sync with waypoints length, preserving existing values. */
-function syncWindows(
-  windows: (TimeWindow | null)[],
-  newLength: number,
-): (TimeWindow | null)[] {
+function syncWindows(windows: (TimeWindow | null)[], newLength: number): (TimeWindow | null)[] {
   if (windows.length === newLength) return windows;
   const out = windows.slice(0, newLength);
   while (out.length < newLength) out.push(null);
@@ -135,12 +126,11 @@ export function createBlockbusterStore(engine: Engine) {
       // Analyst-drawn zones are pinned to the basemap they were drawn on, so they
       // are dropped when the seed changes (a new world) but kept across a same-seed
       // rebuild such as a hex-size change (the basemap is unchanged; only the grid
-      // moved). Every generated world also carries a default storm band so the
-      // temporal view always has structure to show; it is re-seeded on every
-      // rebuild, so any prior copy is stripped before a fresh one is prepended.
+      // moved). The world's temporal weather is a cyclone (a rotating wind field),
+      // re-seeded on every rebuild so time matters from the first frame.
       const basemapChanged = useSeed !== s.seed;
-      const keptZones = (basemapChanged ? [] : s.zones).filter((z) => z.id !== DEFAULT_STORM_ID);
-      const zones = [createStormBand(s.extent.width, { id: DEFAULT_STORM_ID }), ...keptZones];
+      const zones = basemapChanged ? [] : s.zones;
+      const cyclone = createDefaultCyclone(s.extent);
 
       set({
         seed: useSeed,
@@ -150,7 +140,8 @@ export function createBlockbusterStore(engine: Engine) {
         riskStates,
         waypoints,
         zones,
-        // Day/night is part of every generated world, paired with the storm band,
+        cyclone,
+        // Day/night is part of every generated world, paired with the cyclone,
         // so time matters from the first frame (in 2D and in the 3D temporal view).
         dayNight: { ...s.dayNight, enabled: true },
         // Coverage is re-derived against the new grid (kept zones, new hex layout).
@@ -177,6 +168,7 @@ export function createBlockbusterStore(engine: Engine) {
       optimiseOrder: false,
       zones: [],
       zoneRiskType: RISK_TYPES[0],
+      cyclone: null,
       journeyParams: DEFAULT_JOURNEY_PARAMS,
       dayNight: DEFAULT_DAY_NIGHT,
       waypointWindows: [],
@@ -200,6 +192,7 @@ export function createBlockbusterStore(engine: Engine) {
       showRiskBars: false,
       showRiskStacks: false,
       showRoutes: false,
+      showWind: true,
       temporalView: false,
 
       regenerate: (seed) => {
@@ -333,6 +326,8 @@ export function createBlockbusterStore(engine: Engine) {
           dayNight: s.dayNight,
           timeVaryingZones,
           waypointWindows,
+          // The cyclone (rotating wind field) is evaluated per step in the worker.
+          ...(s.cyclone ? { cyclone: s.cyclone } : {}),
         };
         try {
           const plan = await engine.routePlanner.plan(request);
@@ -381,6 +376,7 @@ export function createBlockbusterStore(engine: Engine) {
             : { showRiskStacks: false },
         ),
       setShowRoutes: (show) => set({ showRoutes: show }),
+      setShowWind: (show) => set({ showWind: show }),
       setTemporalView: (open) => set({ temporalView: open }),
 
       setJourneyParams: (patch) => {
