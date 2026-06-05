@@ -1,19 +1,23 @@
 /**
- * THROWAWAY SPIKE — does a stacked 24-hour tower of hex grids actually *read*
- * when you orbit it in 3D? (Stakeholder's "z-axis for temporal perspective"
- * idea.) This is a viewer, not a feature: no editing, no routes, no Leaflet.
+ * THROWAWAY SPIKE — does temporal risk read better as a 3D z-stack or as 2D
+ * small multiples? (Stakeholder's "z-axis for temporal perspective" idea, plus
+ * a side-by-side comparison.) A viewer, not a feature: no editing, no routes,
+ * no Leaflet.
  *
- * It is deliberately faithful, not faked:
- * - The permanent **base grid** (bottom, full opacity) is the non-temporal risk
- *   — terrain + always-active zones + journey speed, no day/night, no time-zones.
- * - Each hourly grid above it is coloured by the real production pipeline,
+ * Faithful, not faked:
+ * - The permanent **base grid** (a solid, slightly-overhanging slab at the
+ *   bottom of the stack) is the non-temporal risk — terrain + always-active
+ *   zones + journey speed, no day/night, no time-zones.
+ * - Each hourly grid is coloured by the real production pipeline,
  *   `selectDisplayProfile` (the same function the time slider drives) →
- *   `cellRiskCost`, evaluated at that hour. Base + hours share one colour scale.
+ *   `cellRiskCost`. Base + hours share one colour scale.
  *
- * Controls expose the obvious occlusion mitigations so we can judge whether any
- * configuration is legible: layer gap, opacity, decimation (every Nth hour), a
- * single-hour "spotlight" (with the base grid this reproduces the 2D time
- * replay over a fixed baseline), and shade-by-channel.
+ * Two layouts (toggle):
+ * - **Stack** — 24 grids up the z-axis over the permanent base; controls for
+ *   the obvious occlusion mitigations (gap, opacity, decimation, single-hour
+ *   spotlight).
+ * - **Grid** — the same 24 grids as a flat 6×4 of small multiples, labelled by
+ *   hour, viewed top-down.
  *
  * Delete `src/spike/`, `temporal3d.html` and the extra `vite` input to remove.
  */
@@ -36,6 +40,19 @@ import { formatTime } from '@/ui/utils/time';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
+// Stack: the permanent base reads as a foundation — a solid pedestal that
+// overhangs the temporal stack (so its rim stays visible from above, where the
+// stacked translucent hours would otherwise bury it) with a clear gap to hour 0.
+const BASE_OVERHANG = 1.08;
+const STACK_START = 2; // hour 0 sits this many `spacing` units above the base
+
+// Grid: 24 hourly maps as small multiples.
+const GRID_COLS = 6;
+const GRID_ROWS = 4;
+const GRID_GAP = 6; // km between tiles
+
+type Layout = 'stack' | 'grid';
+
 /** What a risk cell is shaded by: the composite cost, or one channel's level. */
 type ShadeBy = 'composite' | RiskType;
 
@@ -49,7 +66,7 @@ interface Spotlight {
 }
 
 interface BuiltLayers {
-  /** Permanent (non-temporal) risk grid. */
+  /** Permanent (non-temporal) risk grid, drawn solid (no hex gaps). */
   base: THREE.BufferGeometry;
   /** One vertex-coloured grid per hour 0…23. */
   hours: THREE.BufferGeometry[];
@@ -121,9 +138,10 @@ function makeGridGeometry(
 }
 
 /**
- * Build the permanent base grid plus one grid per hour. The real pipeline is
- * sampled for every cell at every hour; composite costs are normalised against a
- * single global max (over base *and* hours) so colours compare across the tower.
+ * Build the permanent base grid (drawn solid) plus one grid per hour (gapped).
+ * The real pipeline is sampled for every cell at every hour; composite costs are
+ * normalised against a single global max (over base *and* hours) so colours
+ * compare across the whole tower.
  */
 function buildLayers(
   cells: readonly HexCell[],
@@ -164,18 +182,48 @@ function buildLayers(
   // Single channels are already 0…1; composite is normalised by the global max.
   const norm = shadeBy === 'composite' ? maxValue || 1 : 1;
 
-  const base = makeGridGeometry(cells, inputs.extent, inset, (ci) => (baseVals[ci] ?? 0) / norm);
+  // The base is drawn solid (inset 1 = continuous honeycomb) so it reads as a slab.
+  const base = makeGridGeometry(cells, inputs.extent, 1, (ci) => (baseVals[ci] ?? 0) / norm);
   const hours = HOURS.map((h) =>
     makeGridGeometry(cells, inputs.extent, inset, (ci) => (hourVals[h * n + ci] ?? 0) / norm),
   );
   return { base, hours };
 }
 
-/** three's OrbitControls, wrapped for R3F (target follows the tower's mid-height). */
-function Orbit({ targetY, autoRotate }: { targetY: number; autoRotate: boolean }) {
+/** A small canvas-texture label (e.g. "06:00") for the grid tiles. */
+function makeLabelTexture(text: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.font = 'bold 44px system-ui, sans-serif';
+    ctx.fillStyle = '#e6edf3';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 128, 34);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/** three's OrbitControls, wrapped for R3F. Reframes the camera on layout switch. */
+function Orbit({
+  layout,
+  stackTargetY,
+  gridCamHeight,
+  autoRotate,
+}: {
+  layout: Layout;
+  stackTargetY: number;
+  gridCamHeight: number;
+  autoRotate: boolean;
+}) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const ref = useRef<OrbitControls | null>(null);
+  const prevLayout = useRef<Layout>(layout);
 
   useEffect(() => {
     const controls = new OrbitControls(camera, gl.domElement);
@@ -188,16 +236,23 @@ function Orbit({ targetY, autoRotate }: { targetY: number; autoRotate: boolean }
 
   useEffect(() => {
     const controls = ref.current;
-    if (controls) {
-      controls.target.set(0, targetY, 0);
-      controls.update();
+    if (!controls) return;
+    const layoutChanged = prevLayout.current !== layout;
+    prevLayout.current = layout;
+    if (layout === 'grid') {
+      if (layoutChanged) camera.position.set(0, gridCamHeight, 0.001);
+      controls.target.set(0, 0, 0);
+    } else {
+      if (layoutChanged) camera.position.set(62, 48, 80);
+      controls.target.set(0, stackTargetY, 0);
     }
-  }, [targetY]);
+    controls.update();
+  }, [layout, stackTargetY, gridCamHeight, camera]);
 
   useFrame(() => {
     const controls = ref.current;
     if (!controls) return;
-    controls.autoRotate = autoRotate;
+    controls.autoRotate = layout === 'stack' && autoRotate;
     controls.update();
   });
 
@@ -218,7 +273,8 @@ function GroundPlane({ extent, show }: { extent: WorldExtent; show: boolean }) {
   );
 }
 
-function Stack({
+/** 3D z-stack: permanent base slab + 24 hourly grids stacked up the Y axis. */
+function StackView({
   base,
   hours,
   showPermanent,
@@ -237,11 +293,13 @@ function Stack({
 }) {
   return (
     <group>
-      {/* Permanent (non-temporal) risk — the foundation, always full opacity. */}
+      {/* Permanent (non-temporal) risk — a solid, overhanging foundation slab. */}
       {showPermanent && (
-        <mesh geometry={base}>
-          <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
-        </mesh>
+        <group scale={[BASE_OVERHANG, 1, BASE_OVERHANG]}>
+          <mesh geometry={base}>
+            <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
+          </mesh>
+        </group>
       )}
 
       {hours.map((geo, h) => {
@@ -257,7 +315,7 @@ function Stack({
         }
         if (!visible) return null;
         return (
-          <mesh key={h} geometry={geo} position={[0, (h + 1) * spacing, 0]}>
+          <mesh key={h} geometry={geo} position={[0, spacing * (STACK_START + h), 0]}>
             <meshBasicMaterial
               vertexColors
               transparent
@@ -266,6 +324,40 @@ function Stack({
               depthWrite={op >= 1}
             />
           </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+/** 2D small multiples: the 24 hourly grids laid flat in a labelled 6×4. */
+function GridView({
+  hours,
+  extent,
+  labels,
+}: {
+  hours: THREE.BufferGeometry[];
+  extent: WorldExtent;
+  labels: (THREE.Texture | undefined)[];
+}) {
+  const cellW = extent.width + GRID_GAP;
+  const cellH = extent.height + GRID_GAP;
+  return (
+    <group>
+      {hours.map((geo, h) => {
+        const col = h % GRID_COLS;
+        const row = Math.floor(h / GRID_COLS);
+        const x = (col - (GRID_COLS - 1) / 2) * cellW;
+        const z = (row - (GRID_ROWS - 1) / 2) * cellH;
+        return (
+          <group key={h} position={[x, 0, z]}>
+            <mesh geometry={geo}>
+              <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
+            </mesh>
+            <sprite position={[0, 2, -extent.height / 2 - 5]} scale={[18, 4.5, 1]}>
+              <spriteMaterial map={labels[h] ?? null} transparent depthTest={false} />
+            </sprite>
+          </group>
         );
       })}
     </group>
@@ -283,6 +375,7 @@ export function TemporalSpike() {
   const hexSize = useBlockbusterStore((s) => s.hexSize);
   const costParams = useBlockbusterStore((s) => s.costParams);
 
+  const [layout, setLayout] = useState<Layout>('stack');
   const [spacing, setSpacing] = useState(2.5);
   const [opacity, setOpacity] = useState(0.5);
   const [everyN, setEveryN] = useState(1);
@@ -333,26 +426,54 @@ export function TemporalSpike() {
     [layers],
   );
 
+  // Hour labels for the grid view, built once.
+  const labels = useMemo(() => HOURS.map((h) => makeLabelTexture(formatTime(h * 60))), []);
+  useEffect(() => () => labels.forEach((t) => t.dispose()), [labels]);
+
+  // Camera height that frames the whole 6×4 grid from above.
+  const gridCamHeight = useMemo(() => {
+    const gw = GRID_COLS * (extent.width + GRID_GAP);
+    const gd = GRID_ROWS * (extent.height + GRID_GAP);
+    const vfov = (45 * Math.PI) / 180;
+    const aspect =
+      typeof window !== 'undefined' && window.innerHeight > 0
+        ? window.innerWidth / window.innerHeight
+        : 1.6;
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
+    return Math.max(gw / 2 / Math.tan(hfov / 2), gd / 2 / Math.tan(vfov / 2)) * 1.12;
+  }, [extent]);
+
   if (!grid || !cells || !layers) return <div className="spike-loading">Building world…</div>;
 
   const spotlight: Spotlight = { on: spotOn, hour: spotHour, showGhosts };
-  const targetY = HOURS.length * spacing * 0.5;
+  const stackTargetY = spacing * (STACK_START + HOURS.length - 1) * 0.5;
 
   return (
     <div className="spike-root">
-      <Canvas camera={{ position: [62, 48, 80], fov: 45, far: 2000 }}>
+      <Canvas camera={{ position: [62, 48, 80], fov: 45, far: 4000 }}>
         <color attach="background" args={['#0b0e14']} />
-        <GroundPlane extent={extent} show={showGround} />
-        <Stack
-          base={layers.base}
-          hours={layers.hours}
-          showPermanent={showPermanent}
-          spacing={spacing}
-          everyN={everyN}
-          opacity={opacity}
-          spotlight={spotlight}
+        {layout === 'stack' ? (
+          <>
+            <GroundPlane extent={extent} show={showGround} />
+            <StackView
+              base={layers.base}
+              hours={layers.hours}
+              showPermanent={showPermanent}
+              spacing={spacing}
+              everyN={everyN}
+              opacity={opacity}
+              spotlight={spotlight}
+            />
+          </>
+        ) : (
+          <GridView hours={layers.hours} extent={extent} labels={labels} />
+        )}
+        <Orbit
+          layout={layout}
+          stackTargetY={stackTargetY}
+          gridCamHeight={gridCamHeight}
+          autoRotate={autoRotate}
         />
-        <Orbit targetY={targetY} autoRotate={autoRotate} />
       </Canvas>
 
       <a className="spike-back" href="index.html">
@@ -360,64 +481,29 @@ export function TemporalSpike() {
       </a>
 
       <div className="spike-panel">
-        <h1>3D temporal stack — spike</h1>
+        <h1>Temporal risk — spike</h1>
         <p className="sub">
-          {cells.length} cells. Permanent base grid + 24 hourly grids; height = time of day (00:00 →
-          23:00).
+          {cells.length} cells · 24 hours (00:00 → 23:00). Compare the 3D stack against 2D small
+          multiples.
         </p>
 
         <div className="spike-row">
+          <label htmlFor="layout">Layout</label>
+          <select id="layout" value={layout} onChange={(e) => setLayout(e.target.value as Layout)}>
+            <option value="stack">Stack (3D)</option>
+            <option value="grid">Grid (6×4)</option>
+          </select>
+        </div>
+
+        <div className="spike-row">
           <label htmlFor="shade">Shade by</label>
-          <select
-            id="shade"
-            value={shadeBy}
-            onChange={(e) => setShadeBy(e.target.value as ShadeBy)}
-          >
+          <select id="shade" value={shadeBy} onChange={(e) => setShadeBy(e.target.value as ShadeBy)}>
             <option value="composite">Composite cost</option>
             {RISK_TYPES.map((r) => (
               <option key={r} value={r}>
                 {RISK_LABELS[r]}
               </option>
             ))}
-          </select>
-        </div>
-
-        <div className="spike-row">
-          <label htmlFor="spacing">Layer gap</label>
-          <input
-            id="spacing"
-            type="range"
-            min={0.5}
-            max={6}
-            step={0.1}
-            value={spacing}
-            onChange={(e) => setSpacing(Number(e.target.value))}
-          />
-          <span className="spike-val">{spacing.toFixed(1)}</span>
-        </div>
-
-        <div className="spike-row">
-          <label htmlFor="opacity">Opacity</label>
-          <input
-            id="opacity"
-            type="range"
-            min={0.05}
-            max={1}
-            step={0.05}
-            value={opacity}
-            onChange={(e) => setOpacity(Number(e.target.value))}
-          />
-          <span className="spike-val">{opacity.toFixed(2)}</span>
-        </div>
-
-        <div className="spike-row">
-          <label htmlFor="everyN">Show every</label>
-          <select id="everyN" value={everyN} onChange={(e) => setEveryN(Number(e.target.value))}>
-            <option value={1}>every hour</option>
-            <option value={2}>every 2nd</option>
-            <option value={3}>every 3rd</option>
-            <option value={4}>every 4th</option>
-            <option value={6}>every 6th</option>
           </select>
         </div>
 
@@ -435,78 +521,135 @@ export function TemporalSpike() {
           <span className="spike-val">{inset.toFixed(2)}</span>
         </div>
 
-        <div className="spike-row">
-          <label htmlFor="spotOn">Spotlight one hour</label>
-          <input
-            id="spotOn"
-            type="checkbox"
-            checked={spotOn}
-            onChange={(e) => setSpotOn(e.target.checked)}
-          />
-        </div>
-
-        {spotOn && (
+        {layout === 'stack' && (
           <>
             <div className="spike-row">
-              <label htmlFor="spotHour">Hour</label>
+              <label htmlFor="spacing">Layer gap</label>
               <input
-                id="spotHour"
+                id="spacing"
                 type="range"
-                min={0}
-                max={23}
-                step={1}
-                value={spotHour}
-                onChange={(e) => setSpotHour(Number(e.target.value))}
+                min={0.5}
+                max={6}
+                step={0.1}
+                value={spacing}
+                onChange={(e) => setSpacing(Number(e.target.value))}
               />
-              <span className="spike-val">{formatTime(spotHour * 60)}</span>
+              <span className="spike-val">{spacing.toFixed(1)}</span>
             </div>
+
             <div className="spike-row">
-              <label htmlFor="ghosts">Keep others (at Opacity)</label>
+              <label htmlFor="opacity">Opacity</label>
               <input
-                id="ghosts"
+                id="opacity"
+                type="range"
+                min={0.05}
+                max={1}
+                step={0.05}
+                value={opacity}
+                onChange={(e) => setOpacity(Number(e.target.value))}
+              />
+              <span className="spike-val">{opacity.toFixed(2)}</span>
+            </div>
+
+            <div className="spike-row">
+              <label htmlFor="everyN">Show every</label>
+              <select
+                id="everyN"
+                value={everyN}
+                onChange={(e) => setEveryN(Number(e.target.value))}
+              >
+                <option value={1}>every hour</option>
+                <option value={2}>every 2nd</option>
+                <option value={3}>every 3rd</option>
+                <option value={4}>every 4th</option>
+                <option value={6}>every 6th</option>
+              </select>
+            </div>
+
+            <div className="spike-row">
+              <label htmlFor="spotOn">Spotlight one hour</label>
+              <input
+                id="spotOn"
                 type="checkbox"
-                checked={showGhosts}
-                onChange={(e) => setShowGhosts(e.target.checked)}
+                checked={spotOn}
+                onChange={(e) => setSpotOn(e.target.checked)}
+              />
+            </div>
+
+            {spotOn && (
+              <>
+                <div className="spike-row">
+                  <label htmlFor="spotHour">Hour</label>
+                  <input
+                    id="spotHour"
+                    type="range"
+                    min={0}
+                    max={23}
+                    step={1}
+                    value={spotHour}
+                    onChange={(e) => setSpotHour(Number(e.target.value))}
+                  />
+                  <span className="spike-val">{formatTime(spotHour * 60)}</span>
+                </div>
+                <div className="spike-row">
+                  <label htmlFor="ghosts">Keep others (at Opacity)</label>
+                  <input
+                    id="ghosts"
+                    type="checkbox"
+                    checked={showGhosts}
+                    onChange={(e) => setShowGhosts(e.target.checked)}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="spike-row">
+              <label htmlFor="permanent">Permanent risk grid</label>
+              <input
+                id="permanent"
+                type="checkbox"
+                checked={showPermanent}
+                onChange={(e) => setShowPermanent(e.target.checked)}
+              />
+            </div>
+
+            <div className="spike-row">
+              <label htmlFor="ground">Ground plane</label>
+              <input
+                id="ground"
+                type="checkbox"
+                checked={showGround}
+                onChange={(e) => setShowGround(e.target.checked)}
+              />
+            </div>
+
+            <div className="spike-row">
+              <label htmlFor="rotate">Auto-rotate</label>
+              <input
+                id="rotate"
+                type="checkbox"
+                checked={autoRotate}
+                onChange={(e) => setAutoRotate(e.target.checked)}
               />
             </div>
           </>
         )}
 
-        <div className="spike-row">
-          <label htmlFor="permanent">Permanent risk grid</label>
-          <input
-            id="permanent"
-            type="checkbox"
-            checked={showPermanent}
-            onChange={(e) => setShowPermanent(e.target.checked)}
-          />
-        </div>
-
-        <div className="spike-row">
-          <label htmlFor="ground">Ground plane</label>
-          <input
-            id="ground"
-            type="checkbox"
-            checked={showGround}
-            onChange={(e) => setShowGround(e.target.checked)}
-          />
-        </div>
-
-        <div className="spike-row">
-          <label htmlFor="rotate">Auto-rotate</label>
-          <input
-            id="rotate"
-            type="checkbox"
-            checked={autoRotate}
-            onChange={(e) => setAutoRotate(e.target.checked)}
-          />
-        </div>
-
+        {layout === 'stack' ? (
+          <p className="spike-note">
+            Solid slab at the bottom = permanent, <em>non-temporal</em> risk; the 24 translucent
+            grids above add each hour's temporal risk. Spotlight an hour and lower Opacity to replay
+            the day over the fixed baseline. Drag to orbit; scroll to zoom.
+          </p>
+        ) : (
+          <p className="spike-note">
+            24 hourly maps as small multiples (00:00 → 23:00), read left-to-right, top-to-bottom.
+            Same data and colour scale as the stack. Scroll to zoom; drag to tilt.
+          </p>
+        )}
         <p className="spike-note">
-          Bottom grid (full opacity) = permanent, <em>non-temporal</em> risk; the 24 grids above add
-          each hour's temporal risk. Spotlight an hour and lower Opacity to replay the day over the
-          fixed baseline. Seeded: a storm sweeps E→W 08:00–16:00 (raises <em>cold</em>); day/night
-          shifts <em>animals</em> &amp; <em>humans</em>. Drag to orbit; scroll to zoom.
+          Seeded: a storm sweeps E→W 08:00–16:00 (raises <em>cold</em>); day/night shifts{' '}
+          <em>animals</em> &amp; <em>humans</em>.
         </p>
       </div>
     </div>
