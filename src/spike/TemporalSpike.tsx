@@ -507,6 +507,7 @@ export function TemporalSpike() {
   const extent = useBlockbusterStore((s) => s.extent);
   const hexSize = useBlockbusterStore((s) => s.hexSize);
   const costParams = useBlockbusterStore((s) => s.costParams);
+  const terrain = useBlockbusterStore((s) => s.terrain);
 
   const [layout, setLayout] = useState<Layout>('stack');
   const [spacing, setSpacing] = useState(2.5);
@@ -558,6 +559,7 @@ export function TemporalSpike() {
       journeyParams,
       extent,
       hexSize,
+      terrain,
     };
     return buildLayers(cells, inputs, shadeBy, costParams, inset, hourlyMode);
   }, [
@@ -569,6 +571,7 @@ export function TemporalSpike() {
     journeyParams,
     extent,
     hexSize,
+    terrain,
     shadeBy,
     costParams,
     inset,

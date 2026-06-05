@@ -207,6 +207,8 @@ interface TemporalContext {
   hexSizeKm: number;
   waypointWindows: (TimeWindow | null)[];
   waypoints: readonly CellId[];
+  /** Town cells; their human risk dips in the 01:00–05:00 deep-sleep window. */
+  towns: ReadonlySet<CellId>;
 }
 
 /** A no-op temporal context used in time-agnostic calls (TSP ordering etc.). */
@@ -218,6 +220,7 @@ const EMPTY_TEMPORAL: TemporalContext = {
   hexSizeKm: 1,
   waypointWindows: [],
   waypoints: [],
+  towns: new Set(),
 };
 
 /**
@@ -247,13 +250,14 @@ function applyTimeVaryingZones(
 /** Full modifier chain: speed → day/night → time-varying zones. */
 function applyAllModifiers(
   profile: RiskProfile,
+  cellId: CellId,
   cellCenter: WorldPoint | undefined,
   arrivalTimeMin: number,
   speed: number,
   temporal: TemporalContext,
 ): RiskProfile {
   let p = speedModifiedProfile(profile, speed);
-  p = applyTemporalModifiers(p, arrivalTimeMin, temporal.dayNight);
+  p = applyTemporalModifiers(p, arrivalTimeMin, temporal.dayNight, temporal.towns.has(cellId));
   p = applyTimeVaryingZones(p, cellCenter, arrivalTimeMin, temporal);
   return p;
 }
@@ -354,7 +358,7 @@ function aStar(
         for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
           const legTime = (legDistKm / s) * 60;
           const arr = temporal.journeyParams.startTime + legStartTimeMin + curTimeMin + legTime;
-          const prof = applyAllModifiers(graph.riskAt(next), toCenter, arr, s, temporal);
+          const prof = applyAllModifiers(graph.riskAt(next), next, toCenter, arr, s, temporal);
           const base = movementCost(legDistKm, params) + cellRiskCost(prof, params);
           if (base < bestBase) {
             bestBase = base;
@@ -368,7 +372,7 @@ function aStar(
       } else {
         arrivalMin = temporal.journeyParams.startTime + (totalDistKm / fixedSpeed) * 60;
         newTimeMin = curTimeMin + (legDistKm / fixedSpeed) * 60;
-        const profile = applyAllModifiers(graph.riskAt(next), toCenter, arrivalMin, fixedSpeed, temporal);
+        const profile = applyAllModifiers(graph.riskAt(next), next, toCenter, arrivalMin, fixedSpeed, temporal);
         const base = movementCost(legDistKm, params) + cellRiskCost(profile, params);
         edge = uses > 0 ? base * (1 + DIVERSITY_PENALTY * uses) : base;
       }
@@ -520,7 +524,7 @@ function buildCoa(
       for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
         const legTime = i > 0 && legKm > 0 ? (legKm / s) * 60 : 0;
         const arr = temporal.journeyParams.startTime + cumulativeTimeMin + legTime;
-        const prof = applyAllModifiers(graph.riskAt(cellId), cellCenter, arr, s, temporal);
+        const prof = applyAllModifiers(graph.riskAt(cellId), cellId, cellCenter, arr, s, temporal);
         const cost = move + cellRiskCost(prof, params);
         if (cost < bestCost) {
           bestCost = cost;
@@ -535,7 +539,7 @@ function buildCoa(
     const arrivalMin = temporal.journeyParams.startTime + cumulativeTimeMin;
 
     // Apply same modifier chain as A* for consistency.
-    const profile = applyAllModifiers(graph.riskAt(cellId), cellCenter, arrivalMin, chosenSpeed, temporal);
+    const profile = applyAllModifiers(graph.riskAt(cellId), cellId, cellCenter, arrivalMin, chosenSpeed, temporal);
     const perRisk = riskCostBreakdown(profile, params);
 
     let stepCost = move;
@@ -767,6 +771,7 @@ export function planRoutes(request: RouteRequest): RoutePlan {
     hexSizeKm: request.grid.layout.size,
     waypointWindows: request.waypointWindows ?? Array<TimeWindow | null>(request.waypoints.length).fill(null),
     waypoints: request.waypoints,
+    towns: new Set(request.towns ?? []),
   };
 
   let coas: Coa[];

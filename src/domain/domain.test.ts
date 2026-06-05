@@ -60,11 +60,12 @@ describe('cost function', () => {
 });
 
 describe('dayNightModifier (human)', () => {
-  it('peaks at night but drops in the 01:00–05:00 deep-sleep window', () => {
-    expect(dayNightModifier('human', 12 * 60)).toBe(1); // midday baseline
-    expect(dayNightModifier('human', 22 * 60)).toBe(1.5); // evening, more threat
-    expect(dayNightModifier('human', 3 * 60)).toBe(0.5); // deep sleep, towns asleep
-    expect(dayNightModifier('human', 5 * 60 + 30)).toBe(1.5); // after deep sleep, still night
+  it('peaks at night; deep-sleep dip (01:00–05:00) is town-only', () => {
+    expect(dayNightModifier('human', 12 * 60, true)).toBe(1); // midday baseline
+    expect(dayNightModifier('human', 22 * 60, true)).toBe(1.5); // evening, more threat
+    expect(dayNightModifier('human', 3 * 60, true)).toBe(0.5); // town, deep sleep
+    expect(dayNightModifier('human', 3 * 60, false)).toBe(1.5); // away from town, unchanged
+    expect(dayNightModifier('human', 5 * 60 + 30, true)).toBe(1.5); // after deep sleep, still night
   });
 });
 

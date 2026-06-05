@@ -103,16 +103,19 @@ export function speedModifiedProfile(profile: RiskProfile, speedKmh: number): Ri
 /**
  * Day/night multiplier on a risk channel.
  * Night window = NIGHT_START (20:00) through NIGHT_END (06:00), wrapping midnight.
- * Animals ×0.5 at night. Human ×1.5 at night — except in the deepest-sleep
- * window (01:00–05:00) where it drops to ×0.5 (towns asleep). Others unchanged.
+ * Animals ×0.5 at night. Human ×1.5 at night — but in **towns** it instead drops
+ * to ×0.5 during the deepest-sleep window (01:00–05:00) when people are asleep;
+ * away from towns the (bandit) human risk is unchanged through the night. Others
+ * unchanged. `isTown` is the cell's town-ness (biome === 'town').
  */
-export function dayNightModifier(riskType: RiskType, timeMinutes: number): number {
+export function dayNightModifier(riskType: RiskType, timeMinutes: number, isTown = false): number {
   const isNight = timeMinutes >= NIGHT_START || timeMinutes < NIGHT_END;
   switch (riskType) {
     case 'animals':
       return isNight ? 0.5 : 1;
     case 'human': {
-      const isDeepSleep = timeMinutes >= DEEP_SLEEP_START && timeMinutes < DEEP_SLEEP_END;
+      const isDeepSleep =
+        isTown && timeMinutes >= DEEP_SLEEP_START && timeMinutes < DEEP_SLEEP_END;
       if (isDeepSleep) return 0.5;
       return isNight ? 1.5 : 1;
     }
@@ -123,17 +126,19 @@ export function dayNightModifier(riskType: RiskType, timeMinutes: number): numbe
 
 /**
  * Apply day/night multipliers to a profile; returns a new object, clamped to [0, 1].
- * Returns the input profile unchanged when `config.enabled` is false.
+ * Returns the input profile unchanged when `config.enabled` is false. `isTown`
+ * gates the town-only deep-sleep human dip (see {@link dayNightModifier}).
  */
 export function applyTemporalModifiers(
   profile: RiskProfile,
   timeMinutes: number,
   config: DayNightConfig,
+  isTown = false,
 ): RiskProfile {
   if (!config.enabled) return profile;
   const out = {} as RiskProfile;
   for (const risk of RISK_TYPES) {
-    out[risk] = clamp01(profile[risk] * dayNightModifier(risk, timeMinutes));
+    out[risk] = clamp01(profile[risk] * dayNightModifier(risk, timeMinutes, isTown));
   }
   return out;
 }
