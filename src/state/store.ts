@@ -82,11 +82,20 @@ function defaultWaypoints(grid: HexGrid): CellId[] {
  */
 export function createBlockbusterStore(engine: Engine) {
   let replanTimer: ReturnType<typeof setTimeout> | undefined;
+  let regenerateTimer: ReturnType<typeof setTimeout> | undefined;
 
   return create<BlockbusterState>()((set, get) => {
     const scheduleReplan = () => {
       if (replanTimer) clearTimeout(replanTimer);
       replanTimer = setTimeout(() => void get().replan(), 150);
+    };
+
+    // Rebuilding the world (map-gen → grid → terrain → risk scoring) is a
+    // synchronous, main-thread-blocking pass, so coalesce rapid slider input
+    // (e.g. dragging the hex-size control) into a single rebuild once it settles.
+    const scheduleRegenerate = () => {
+      if (regenerateTimer) clearTimeout(regenerateTimer);
+      regenerateTimer = setTimeout(() => get().regenerate(), 150);
     };
 
     return {
@@ -175,8 +184,12 @@ export function createBlockbusterStore(engine: Engine) {
       },
 
       setHexSize: (size) => {
-        set({ hexSize: size });
-        get().regenerate();
+        // Decouple the slider from the heavy rebuild: reflect the new size on the
+        // control at once and drop the now-stale COAs so the old routes don't
+        // linger over a grid they no longer fit. The grid rebuild + worker replan
+        // run on a debounce, and the recomputed COAs reappear when they're ready.
+        set({ hexSize: size, plan: null, selectedCoaId: null });
+        scheduleRegenerate();
       },
 
       setAppetite: (risk, value) => {
@@ -268,6 +281,9 @@ export function createBlockbusterStore(engine: Engine) {
           return;
         }
         set({ planning: true, planError: null });
+        // Capture the grid we plan against; regenerate() swaps in a new grid on a
+        // hex-size or seed change, so an in-flight result against the old one is stale.
+        const requestGrid = s.grid;
         const risk: Record<CellId, RiskProfile> = {};
         for (const [id, state] of s.riskStates)
           risk[id] = applyZoneOffsets(effectiveProfile(state), s.zoneContribution.get(id));
@@ -294,7 +310,9 @@ export function createBlockbusterStore(engine: Engine) {
         };
         try {
           const plan = await engine.routePlanner.plan(request);
-          // Ignore stale results whose waypoints no longer match the live state.
+          // Ignore stale results: the world was rebuilt (hex-size / seed change
+          // swapped in a new grid) or the waypoints no longer match the live state.
+          if (get().grid !== requestGrid) return;
           if (get().waypoints.join('>') !== request.waypoints.join('>')) return;
           set({
             plan,

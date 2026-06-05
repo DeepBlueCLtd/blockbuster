@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import type { RiskZone } from '@domain';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { RiskZone, RoutePlan } from '@domain';
 import { createMockEngine } from '@/mocks/mockEngine';
 import { createBlockbusterStore, selectEffectiveProfile } from './store';
 
@@ -130,5 +130,66 @@ describe('store — extra-risk zones', () => {
     expect(store.getState().zoneContribution.get(cellId)?.human ?? 0).toBeCloseTo(0.5, 6);
     const withZone = selectEffectiveProfile(store.getState(), cellId)?.human ?? 0;
     expect(withZone).toBeCloseTo(Math.min(1, baseHuman + 0.5), 6);
+  });
+});
+
+describe('store — hex-size decoupling', () => {
+  it('clears the COAs at once but defers the heavy rebuild to a debounce', () => {
+    vi.useFakeTimers();
+    try {
+      const store = createBlockbusterStore(createMockEngine());
+      store.getState().regenerate(1);
+      const grid = store.getState().grid;
+      const cellCount = grid?.cells.length ?? 0;
+      expect(cellCount).toBeGreaterThan(0);
+
+      // Pretend a worker result from a previous cycle is on screen.
+      const plan: RoutePlan = { coas: [], waypoints: [], generatedAt: 0 };
+      store.setState({ plan, selectedCoaId: 'coa-1' });
+
+      store.getState().setHexSize(4);
+
+      // The control reflects the new size immediately and the stale COAs are gone …
+      expect(store.getState().hexSize).toBe(4);
+      expect(store.getState().plan).toBeNull();
+      expect(store.getState().selectedCoaId).toBeNull();
+      // … but the world is not rebuilt synchronously (still the same grid object).
+      expect(store.getState().grid).toBe(grid);
+
+      // Once the slider settles, the debounce fires and rebuilds the grid larger.
+      vi.advanceTimersByTime(200);
+      expect(store.getState().grid).not.toBe(grid);
+      expect(store.getState().grid?.cells.length).toBeLessThan(cellCount);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('coalesces rapid slider changes into a single rebuild at the final size', () => {
+    vi.useFakeTimers();
+    try {
+      const store = createBlockbusterStore(createMockEngine());
+      store.getState().regenerate(1);
+      const grid = store.getState().grid;
+
+      // Drag the slider across several values inside one debounce window.
+      store.getState().setHexSize(3);
+      vi.advanceTimersByTime(50);
+      store.getState().setHexSize(3.5);
+      vi.advanceTimersByTime(50);
+      store.getState().setHexSize(4);
+      // Each change reset the timer, so no rebuild has happened yet.
+      expect(store.getState().grid).toBe(grid);
+
+      // Only the final size rebuilds, exactly once.
+      vi.advanceTimersByTime(200);
+      const rebuilt = store.getState().grid;
+      expect(rebuilt).not.toBe(grid);
+      expect(store.getState().hexSize).toBe(4);
+      vi.advanceTimersByTime(500);
+      expect(store.getState().grid).toBe(rebuilt);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
