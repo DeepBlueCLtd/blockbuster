@@ -1,11 +1,11 @@
 /**
- * THROWAWAY SPIKE worker — builds the permanent terrain raster off the main
+ * Builds the permanent terrain raster for the 3D temporal view off the main
  * thread so revealing the Leaflet base never blocks the UI. The terrain field is
  * regenerated deterministically from `{ extent, seed }` (the engine is pure, no
  * DOM), rasterised on an OffscreenCanvas, and posted back as a PNG Blob.
  *
- * The rasterisation mirrors `src/ui/map/TerrainLayer.tsx` (kept in sync by hand
- * — this is a spike). Vite bundles it via
+ * The rasterisation mirrors `src/ui/map/TerrainLayer.tsx` (kept in sync by hand).
+ * Vite bundles it via
  * `new Worker(new URL('./terrainRaster.worker.ts', import.meta.url), { type: 'module' })`.
  */
 import type { Biome, TerrainField, TerrainSample, WorldExtent } from '@domain';
@@ -125,7 +125,7 @@ ctx.onmessage = (event) => {
       if (blob) ctx.postMessage(blob);
     })
     .catch((error) => {
-      // Spike: if OffscreenCanvas/raster fails, the base just stays blank.
+      // If OffscreenCanvas/raster fails, the base just stays blank.
       console.error('terrain raster worker failed', error);
     });
 };

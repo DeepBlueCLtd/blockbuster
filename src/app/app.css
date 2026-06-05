@@ -144,6 +144,13 @@ body,
   font-size: 18px;
 }
 
+.side-header-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+}
+
 .tagline {
   margin: 2px 0 0;
   font-size: 12px;

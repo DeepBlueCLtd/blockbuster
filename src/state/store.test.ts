@@ -89,18 +89,51 @@ describe('store — extra-risk zones', () => {
     expect(store.getState().zoneRiskType).toBe('heat');
   });
 
-  it('drops zones when the seed changes but keeps them on a same-seed rebuild', () => {
+  it('seeds a default storm band on every generated world', () => {
+    store.getState().regenerate(1);
+    const zones = store.getState().zones;
+    expect(zones).toHaveLength(1);
+    expect(zones[0]?.id).toBe('default-storm');
+    expect(zones[0]?.risk).toBe('cold');
+    expect(zones[0]?.motion?.type).toBe('linear-sweep');
+  });
+
+  it('enables day/night on every generated world, re-enabling it on regenerate', () => {
+    expect(store.getState().dayNight.enabled).toBe(false); // default, before any build
+    store.getState().regenerate(1);
+    expect(store.getState().dayNight.enabled).toBe(true);
+    store.getState().setDayNight({ enabled: false });
+    store.getState().regenerate(2);
+    expect(store.getState().dayNight.enabled).toBe(true);
+  });
+
+  it('keeps analyst zones on a same-seed rebuild and drops them on a new seed, always refreshing one default storm', () => {
     store.getState().regenerate(1);
     store.getState().addZone(makeZone('a'));
+    expect(store.getState().zones).toHaveLength(2); // default storm + 'a'
 
-    // A same-seed rebuild (e.g. a hex-size change) keeps the basemap, so zones stay.
+    // A same-seed rebuild (e.g. a hex-size change) keeps analyst zones; the
+    // default storm is re-seeded, so there is still exactly one copy of it.
     store.getState().regenerate(1);
-    expect(store.getState().zones).toHaveLength(1);
+    const sameSeed = store.getState().zones;
+    expect(sameSeed).toHaveLength(2);
+    expect(sameSeed.filter((z) => z.id === 'default-storm')).toHaveLength(1);
+    expect(sameSeed.some((z) => z.id === 'a')).toBe(true);
 
-    // A new seed is a new basemap, so its zones no longer apply and are dropped.
+    // A new seed is a new basemap: analyst zones are dropped, the storm remains.
     store.getState().regenerate(2);
-    expect(store.getState().zones).toHaveLength(0);
+    const newSeed = store.getState().zones;
+    expect(newSeed).toHaveLength(1);
+    expect(newSeed[0]?.id).toBe('default-storm');
     expect(store.getState().selectedZoneId).toBeNull();
+  });
+
+  it('toggles the full-viewport 3D temporal view flag', () => {
+    expect(store.getState().temporalView).toBe(false);
+    store.getState().setTemporalView(true);
+    expect(store.getState().temporalView).toBe(true);
+    store.getState().setTemporalView(false);
+    expect(store.getState().temporalView).toBe(false);
   });
 
   it('folds an area-weighted zone offset into the effective profile', () => {
