@@ -96,6 +96,71 @@ export function createBlockbusterStore(engine: Engine) {
       replanTimer = setTimeout(() => void get().replan(), 150);
     };
 
+    /**
+     * Rebuild the derived world (grid → terrain → risk) from the current
+     * seed/extent/hexSize and commit it. Pure state update — it does NOT replan,
+     * so callers choose the cadence: {@link BlockbusterState.regenerate} replans
+     * immediately, while a live hex-size drag rebuilds on every step and
+     * debounces the (worker) replan so planning runs once the drag settles.
+     */
+    const rebuildWorld = (seed?: number) => {
+      const s = get();
+      const useSeed = seed ?? s.seed;
+      const grid = engine.gridBuilder.build(s.extent, {
+        orientation: 'pointy',
+        size: s.hexSize,
+      });
+      // The terrain field depends only on seed + extent, never on hex size, so
+      // reuse the existing one when neither changed. This keeps TerrainLayer's
+      // cached base-map raster valid: a hex-size change must not trigger a full,
+      // main-thread re-rasterise (~96k samples + PNG encode) of an unchanged world.
+      const field =
+        s.field && s.field.seed === useSeed && s.field.extent === s.extent
+          ? s.field
+          : engine.mapGenerator.generate({ extent: s.extent, seed: useSeed });
+      const terrain = engine.gridBuilder.sampleTerrain(grid, field);
+      const riskStates = new Map<CellId, CellRiskState>();
+      for (const cell of grid.cells) {
+        const sample = terrain.get(cell.id);
+        if (!sample) continue;
+        riskStates.set(cell.id, {
+          cellId: cell.id,
+          base: engine.riskEngine.baseProfile(sample),
+          overrides: {},
+        });
+      }
+      let waypoints = s.waypoints.filter((id) => grid.get(id));
+      if (waypoints.length < 2) waypoints = defaultWaypoints(grid);
+
+      // Analyst-drawn zones are pinned to the basemap they were drawn on, so they
+      // are dropped when the seed changes (a new world) but kept across a same-seed
+      // rebuild such as a hex-size change (the basemap is unchanged; only the grid
+      // moved). Every generated world also carries a default storm band so the
+      // temporal view always has structure to show; it is re-seeded on every
+      // rebuild, so any prior copy is stripped before a fresh one is prepended.
+      const basemapChanged = useSeed !== s.seed;
+      const keptZones = (basemapChanged ? [] : s.zones).filter((z) => z.id !== DEFAULT_STORM_ID);
+      const zones = [createStormBand(s.extent.width, { id: DEFAULT_STORM_ID }), ...keptZones];
+
+      set({
+        seed: useSeed,
+        grid,
+        field,
+        terrain,
+        riskStates,
+        waypoints,
+        zones,
+        // Day/night is part of every generated world, paired with the storm band,
+        // so time matters from the first frame (in 2D and in the 3D temporal view).
+        dayNight: { ...s.dayNight, enabled: true },
+        // Coverage is re-derived against the new grid (kept zones, new hex layout).
+        zoneContribution: computeZoneContribution(grid, zones),
+        selectedZoneId: basemapChanged ? null : s.selectedZoneId,
+        selectedCellId: null,
+        selectedCoaId: null,
+      });
+    };
+
     return {
       seed: 1,
       extent: DEFAULT_EXTENT,
@@ -138,62 +203,19 @@ export function createBlockbusterStore(engine: Engine) {
       temporalView: false,
 
       regenerate: (seed) => {
-        const s = get();
-        const useSeed = seed ?? s.seed;
-        const grid = engine.gridBuilder.build(s.extent, {
-          orientation: 'pointy',
-          size: s.hexSize,
-        });
-        const field = engine.mapGenerator.generate({ extent: s.extent, seed: useSeed });
-        const terrain = engine.gridBuilder.sampleTerrain(grid, field);
-        const riskStates = new Map<CellId, CellRiskState>();
-        for (const cell of grid.cells) {
-          const sample = terrain.get(cell.id);
-          if (!sample) continue;
-          riskStates.set(cell.id, {
-            cellId: cell.id,
-            base: engine.riskEngine.baseProfile(sample),
-            overrides: {},
-          });
-        }
-        let waypoints = s.waypoints.filter((id) => grid.get(id));
-        if (waypoints.length < 2) waypoints = defaultWaypoints(grid);
-
-        // Analyst-drawn zones are pinned to the basemap they were drawn on, so they
-        // are dropped when the seed changes (a new world) but kept across a same-seed
-        // rebuild such as a hex-size change (the basemap is unchanged; only the grid
-        // moved). Every generated world also carries a default storm band so the
-        // temporal view always has structure to show; it is re-seeded on every
-        // regenerate, so any prior copy is stripped before a fresh one is prepended.
-        const basemapChanged = useSeed !== s.seed;
-        const keptZones = (basemapChanged ? [] : s.zones).filter(
-          (z) => z.id !== DEFAULT_STORM_ID,
-        );
-        const zones = [createStormBand(s.extent.width, { id: DEFAULT_STORM_ID }), ...keptZones];
-
-        set({
-          seed: useSeed,
-          grid,
-          field,
-          terrain,
-          riskStates,
-          waypoints,
-          zones,
-          // Day/night is part of every generated world, paired with the storm band,
-          // so time matters from the first frame (in 2D and in the 3D temporal view).
-          dayNight: { ...s.dayNight, enabled: true },
-          // Coverage is re-derived against the new grid (kept zones, new hex layout).
-          zoneContribution: computeZoneContribution(grid, zones),
-          selectedZoneId: basemapChanged ? null : s.selectedZoneId,
-          selectedCellId: null,
-          selectedCoaId: null,
-        });
+        rebuildWorld(seed);
         void get().replan();
       },
 
       setHexSize: (size) => {
-        set({ hexSize: size });
-        get().regenerate();
+        // Live resize: rebuild the grid on every step so the hexes track the
+        // slider in real time — the base-map raster is reused, so this is cheap.
+        // The now-stale COAs are dropped (they'd be drawn against a grid they no
+        // longer fit), and only the worker replan is debounced, so planning runs
+        // once the drag settles and the recomputed COAs reappear when ready.
+        set({ hexSize: size, plan: null, selectedCoaId: null });
+        rebuildWorld();
+        scheduleReplan();
       },
 
       setAppetite: (risk, value) => {
@@ -285,6 +307,9 @@ export function createBlockbusterStore(engine: Engine) {
           return;
         }
         set({ planning: true, planError: null });
+        // Capture the grid we plan against; regenerate() swaps in a new grid on a
+        // hex-size or seed change, so an in-flight result against the old one is stale.
+        const requestGrid = s.grid;
         const risk: Record<CellId, RiskProfile> = {};
         for (const [id, state] of s.riskStates)
           risk[id] = applyZoneOffsets(effectiveProfile(state), s.zoneContribution.get(id));
@@ -311,7 +336,9 @@ export function createBlockbusterStore(engine: Engine) {
         };
         try {
           const plan = await engine.routePlanner.plan(request);
-          // Ignore stale results whose waypoints no longer match the live state.
+          // Ignore stale results: the world was rebuilt (hex-size / seed change
+          // swapped in a new grid) or the waypoints no longer match the live state.
+          if (get().grid !== requestGrid) return;
           if (get().waypoints.join('>') !== request.waypoints.join('>')) return;
           set({
             plan,

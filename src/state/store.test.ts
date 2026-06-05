@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import type { RiskZone } from '@domain';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { RiskZone, RoutePlan } from '@domain';
 import { createMockEngine } from '@/mocks/mockEngine';
 import { createBlockbusterStore, selectEffectiveProfile } from './store';
 
@@ -163,5 +163,85 @@ describe('store — extra-risk zones', () => {
     expect(store.getState().zoneContribution.get(cellId)?.human ?? 0).toBeCloseTo(0.5, 6);
     const withZone = selectEffectiveProfile(store.getState(), cellId)?.human ?? 0;
     expect(withZone).toBeCloseTo(Math.min(1, baseHuman + 0.5), 6);
+  });
+});
+
+describe('store — hex-size decoupling', () => {
+  it('live-resizes the grid and clears the COAs immediately', () => {
+    vi.useFakeTimers();
+    try {
+      const store = createBlockbusterStore(createMockEngine());
+      store.getState().regenerate(1);
+      const grid = store.getState().grid;
+      const cellCount = grid?.cells.length ?? 0;
+      expect(cellCount).toBeGreaterThan(0);
+
+      // Pretend a worker result from a previous cycle is on screen.
+      const plan: RoutePlan = { coas: [], waypoints: [], generatedAt: 0 };
+      store.setState({ plan, selectedCoaId: 'coa-1' });
+
+      store.getState().setHexSize(4);
+
+      // The grid tracks the slider at once (live resize) and the stale COAs are gone.
+      expect(store.getState().hexSize).toBe(4);
+      expect(store.getState().grid).not.toBe(grid);
+      expect(store.getState().grid?.cells.length).toBeLessThan(cellCount);
+      expect(store.getState().plan).toBeNull();
+      expect(store.getState().selectedCoaId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reuses the terrain field on a hex-size change so the base map is not re-rasterised', () => {
+    vi.useFakeTimers();
+    try {
+      const store = createBlockbusterStore(createMockEngine());
+      store.getState().regenerate(1);
+      const field = store.getState().field;
+      expect(field).not.toBeNull();
+
+      // A live resize rebuilds the grid but keeps the same field object, so
+      // TerrainLayer's cached raster stays valid — no expensive re-rasterise.
+      store.getState().setHexSize(4);
+      expect(store.getState().field).toBe(field);
+
+      // A new seed is a new world, so the field (and its raster) is rebuilt.
+      store.getState().regenerate(2);
+      expect(store.getState().field).not.toBe(field);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rebuilds live on every step but coalesces the replan to a single run', () => {
+    vi.useFakeTimers();
+    try {
+      const engine = createMockEngine();
+      const planSpy = vi.spyOn(engine.routePlanner, 'plan');
+      const store = createBlockbusterStore(engine);
+      store.getState().regenerate(1);
+      planSpy.mockClear(); // ignore the initial regenerate's replan
+
+      // Drag the slider across several steps within one debounce window.
+      store.getState().setHexSize(3);
+      const gridA = store.getState().grid;
+      store.getState().setHexSize(3.5);
+      const gridB = store.getState().grid;
+      store.getState().setHexSize(4);
+      const gridC = store.getState().grid;
+
+      // Each step rebuilt the grid live (distinct grids) without replanning yet.
+      expect(gridA).not.toBe(gridB);
+      expect(gridB).not.toBe(gridC);
+      expect(planSpy).not.toHaveBeenCalled();
+
+      // The replan fires once, after the drag settles, at the final size.
+      vi.advanceTimersByTime(200);
+      expect(planSpy).toHaveBeenCalledTimes(1);
+      expect(store.getState().hexSize).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
