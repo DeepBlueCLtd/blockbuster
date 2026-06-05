@@ -18,7 +18,9 @@ import './spike.css';
 // Vertex colours reach the GPU exactly as authored, matching the 2D map.
 THREE.ColorManagement.enabled = false;
 
-const SEED = 42;
+// Match the demo's default seed so the permanent map shows the same terrain
+// (e.g. the two dominant towns) you see in the live 2D map.
+const SEED = 1;
 
 const store = useBlockbusterStore;
 store.getState().regenerate(SEED);

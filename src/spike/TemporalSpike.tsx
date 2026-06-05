@@ -125,15 +125,14 @@ function heatThreeColor(t: number): THREE.Color {
   return new THREE.Color().setHSL(hue / 360, 0.72, 0.48);
 }
 
-// Diverging scale for the temporal delta: pale at zero, red where temporal
-// sources add risk, blue where they remove it.
-const DIVERGING_ZERO = new THREE.Color(0.9, 0.9, 0.84);
-const DIVERGING_POS = new THREE.Color(0.83, 0.12, 0.12);
-const DIVERGING_NEG = new THREE.Color(0.12, 0.4, 0.82);
-function divergingColor(t: number): THREE.Color {
-  const a = Math.min(1, Math.abs(t));
-  return DIVERGING_ZERO.clone().lerp(t >= 0 ? DIVERGING_POS : DIVERGING_NEG, a);
-}
+// Temporal delta: the colour carries the sign (red adds risk, blue removes it)
+// and the magnitude rides on per-cell ALPHA — so a "no change" cell is fully
+// transparent and the non-temporal backdrop shows through, instead of a fill
+// that hides it from above.
+const TEMPORAL_POS = new THREE.Color(0.85, 0.1, 0.1);
+const TEMPORAL_NEG = new THREE.Color(0.1, 0.4, 0.85);
+const temporalColor = (t: number): THREE.Color => (t >= 0 ? TEMPORAL_POS : TEMPORAL_NEG);
+const temporalAlpha = (t: number): number => Math.min(1, Math.abs(t) ** 0.75);
 
 /** World (x, y) km → centred scene (X, Z); hours become the Y axis elsewhere. */
 function worldToXZ(p: WorldPoint, ext: WorldExtent): readonly [number, number] {
@@ -174,13 +173,15 @@ function makeGridGeometry(
   ext: WorldExtent,
   inset: number,
   colorAt: (cellIndex: number) => THREE.Color,
+  alphaAt: (cellIndex: number) => number = () => 1,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
-  const colors: number[] = [];
+  const colors: number[] = []; // RGBA — per-cell alpha drives temporal transparency
   for (let ci = 0; ci < cells.length; ci++) {
     const cell = cells[ci];
     if (!cell) continue;
     const col = colorAt(ci);
+    const a = alphaAt(ci);
     const c = cell.center;
     const [cx, cz] = worldToXZ(c, ext);
     const verts = cell.vertices;
@@ -192,12 +193,12 @@ function makeGridGeometry(
       const [x1, z1] = worldToXZ(insetPoint(c, v1, inset), ext);
       const [x2, z2] = worldToXZ(insetPoint(c, v2, inset), ext);
       positions.push(cx, 0, cz, x1, 0, z1, x2, 0, z2);
-      colors.push(col.r, col.g, col.b, col.r, col.g, col.b, col.r, col.g, col.b);
+      colors.push(col.r, col.g, col.b, a, col.r, col.g, col.b, a, col.r, col.g, col.b, a);
     }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
   return geo;
 }
 
@@ -264,11 +265,17 @@ function buildLayers(
     heatThreeColor((baseVals[ci] ?? 0) / baseNorm),
   );
   const hours = HOURS.map((h) =>
-    makeGridGeometry(cells, inputs.extent, inset, (ci) =>
-      hourlyMode === 'temporal'
-        ? divergingColor((hourVals[h * n + ci] ?? 0) / maxAbsDelta)
-        : heatThreeColor((hourVals[h * n + ci] ?? 0) / baseNorm),
-    ),
+    hourlyMode === 'temporal'
+      ? makeGridGeometry(
+          cells,
+          inputs.extent,
+          inset,
+          (ci) => temporalColor((hourVals[h * n + ci] ?? 0) / maxAbsDelta),
+          (ci) => temporalAlpha((hourVals[h * n + ci] ?? 0) / maxAbsDelta),
+        )
+      : makeGridGeometry(cells, inputs.extent, inset, (ci) =>
+          heatThreeColor((hourVals[h * n + ci] ?? 0) / baseNorm),
+        ),
   );
   return { base, hours };
 }
@@ -400,6 +407,7 @@ function Scene({
   everyN,
   opacity,
   spotlight,
+  temporal,
   showPermanent,
   showGround,
   morph,
@@ -412,6 +420,7 @@ function Scene({
   everyN: number;
   opacity: number;
   spotlight: Spotlight;
+  temporal: boolean;
   showPermanent: boolean;
   showGround: boolean;
   morph: number;
@@ -460,7 +469,7 @@ function Scene({
                 transparent
                 opacity={op}
                 side={THREE.DoubleSide}
-                depthWrite={op >= 1}
+                depthWrite={!temporal && op >= 1}
               />
             </mesh>
             <sprite position={[0, 2, -extent.height / 2 - 5]} scale={[18, 4.5, 1]}>
@@ -588,6 +597,7 @@ export function TemporalSpike() {
           everyN={everyN}
           opacity={opacity}
           spotlight={spotlight}
+          temporal={hourlyMode === 'temporal'}
           showPermanent={showPermanent}
           showGround={showGround}
           morph={morph}
