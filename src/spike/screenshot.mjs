@@ -46,7 +46,7 @@ await page.waitForTimeout(3000); // let the scene build + settle
 await page.screenshot({ path: 'spike-stack.png' });
 console.log('saved spike-stack.png');
 
-await page.selectOption('#layout', 'grid');
+await page.getByRole('button', { name: 'Grid 6×4' }).click();
 await page.waitForTimeout(2500); // morph + settle
 await page.screenshot({ path: 'spike-grid.png' });
 console.log('saved spike-grid.png');

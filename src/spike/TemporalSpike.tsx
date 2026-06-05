@@ -86,6 +86,16 @@ const smoothstep = (t: number) => {
   return x * x * (3 - 2 * x);
 };
 
+// Orthographic projection (no perspective) so the stacked maps line up when
+// viewed from above. The camera positions still frame each view; we convert the
+// framing distance to an ortho `zoom` that matches the apparent size a 45° fov
+// perspective camera would have shown at that distance.
+const FOV = 45;
+const orthoZoom = (distance: number): number => {
+  const h = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 900;
+  return h / (2 * distance * Math.tan(((FOV * Math.PI) / 180) / 2));
+};
+
 const gridCellW = (e: WorldExtent) => e.width + GRID_GAP;
 const gridCellH = (e: WorldExtent) => e.height + GRID_GAP;
 /** Z of the permanent map, centred just north of the hourly grid. */
@@ -321,6 +331,7 @@ function Orbit({
   const ref = useRef<OrbitControls | null>(null);
   const fromPos = useRef(new THREE.Vector3());
   const fromTarget = useRef(new THREE.Vector3());
+  const fromZoom = useRef(1);
   const startMorph = useRef(0);
   const animating = useRef(false);
 
@@ -357,6 +368,7 @@ function Orbit({
       if (!animating.current) {
         fromPos.current.copy(camera.position);
         fromTarget.current.copy(controls.target);
+        fromZoom.current = (camera as THREE.OrthographicCamera).zoom;
         startMorph.current = morph;
         animating.current = true;
       }
@@ -373,6 +385,9 @@ function Orbit({
           : new THREE.Vector3(0, 0, gridTargetZ);
       camera.position.lerpVectors(fromPos.current, toPos, p);
       controls.target.lerpVectors(fromTarget.current, toTarget, p);
+      const cam = camera as THREE.OrthographicCamera;
+      cam.zoom = lerp(fromZoom.current, orthoZoom(toPos.distanceTo(toTarget)), p);
+      cam.updateProjectionMatrix();
       controls.enabled = false;
       controls.autoRotate = false;
     } else {
@@ -503,8 +518,8 @@ export function TemporalSpike() {
   const [showPermanent, setShowPermanent] = useState(true);
   const [showGround, setShowGround] = useState(true);
   const [autoRotate, setAutoRotate] = useState(false);
-  const [spotOn, setSpotOn] = useState(false);
-  const [spotHour, setSpotHour] = useState(13);
+  const [spotOn, setSpotOn] = useState(true);
+  const [spotHour, setSpotHour] = useState(12);
   const [showGhosts, setShowGhosts] = useState(true);
 
   // Layout morph: 0 = grid, 1 = stack, animated on toggle.
@@ -585,10 +600,13 @@ export function TemporalSpike() {
 
   const spotlight: Spotlight = { on: spotOn, hour: spotHour, showGhosts };
   const stackTargetY = spacing * (STACK_START + HOURS.length - 1) * 0.5;
+  const initialZoom = orthoZoom(
+    Math.hypot(STACK_CAM[0], STACK_CAM[1] - stackTargetY, STACK_CAM[2]),
+  );
 
   return (
     <div className="spike-root">
-      <Canvas camera={{ position: [62, 48, 80], fov: 45, far: 4000 }}>
+      <Canvas orthographic camera={{ position: [62, 48, 80], zoom: initialZoom, near: 0.1, far: 4000 }}>
         <color attach="background" args={['#0b0e14']} />
         <Scene
           layers={layers}
@@ -627,11 +645,23 @@ export function TemporalSpike() {
         </p>
 
         <div className="spike-row">
-          <label htmlFor="layout">Layout</label>
-          <select id="layout" value={layout} onChange={(e) => setLayout(e.target.value as Layout)}>
-            <option value="stack">Stack (3D)</option>
-            <option value="grid">Grid (6×4)</option>
-          </select>
+          <span className="spike-lbl">Layout</span>
+          <div className="spike-seg">
+            <button
+              type="button"
+              className={layout === 'stack' ? 'on' : ''}
+              onClick={() => setLayout('stack')}
+            >
+              Stack 3D
+            </button>
+            <button
+              type="button"
+              className={layout === 'grid' ? 'on' : ''}
+              onClick={() => setLayout('grid')}
+            >
+              Grid 6×4
+            </button>
+          </div>
         </div>
 
         <div className="spike-row">
