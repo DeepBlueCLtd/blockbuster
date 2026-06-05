@@ -75,6 +75,55 @@ export function clampZoneOffset(value: number): number {
   return clamp(value, ZONE_OFFSET_MIN, ZONE_OFFSET_MAX);
 }
 
+/** Overrides for {@link createStormBand}; `id` is required so callers control determinism. */
+export interface StormBandOptions {
+  /** Stable zone id. Supplied by the caller so seeded storms stay deterministic. */
+  id: string;
+  /** Display name. Defaults to `'Storm band'`. */
+  name?: string;
+  /** Cold-risk offset while active. Defaults to `0.3`. */
+  offset?: number;
+  /** Active-window start, minutes from midnight. Defaults to 08:00. */
+  startTime?: number;
+  /** Active-window end, minutes from midnight. Defaults to 16:00. */
+  endTime?: number;
+  /** Band width in cell-widths. Defaults to `5`. */
+  bandCells?: number;
+  /** If true the band slants west. Defaults to `true`. */
+  slantLeft?: boolean;
+}
+
+/**
+ * Build a moving cold storm band that sweeps the world east→west (from
+ * `x = extentWidth` to `x = 0`) across its active window. Shared by world
+ * generation (a seeded default) and the Extra-factors "Generate storm band"
+ * control so the two never drift — the only difference is the supplied `id`
+ * and any overridden parameters.
+ */
+export function createStormBand(extentWidth: number, opts: StormBandOptions): RiskZone {
+  const {
+    id,
+    name = 'Storm band',
+    offset = 0.3,
+    startTime = 8 * 60,
+    endTime = 16 * 60,
+    bandCells = 5,
+    slantLeft = true,
+  } = opts;
+  return {
+    id,
+    name,
+    risk: 'cold',
+    kind: 'polygon',
+    ring: [],
+    offset,
+    enabled: true,
+    startTime,
+    endTime,
+    motion: { type: 'linear-sweep', fromX: extentWidth, toX: 0, bandCells, slantLeft },
+  };
+}
+
 /**
  * Whether a zone's time window includes the given wall-clock time.
  * Zones with no time bounds are always active.

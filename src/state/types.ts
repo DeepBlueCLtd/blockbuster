@@ -95,6 +95,8 @@ export interface BlockbusterState {
   showRiskStacks: boolean;
   /** Whether the generated route lines and waypoint markers are drawn. */
   showRoutes: boolean;
+  /** When true, the full-viewport 3D temporal view replaces the default app. */
+  temporalView: boolean;
 
   // --- Actions ---
   /** Build (or rebuild) the world from the current seed/extent/hexSize. */
@@ -122,6 +124,8 @@ export interface BlockbusterState {
   setShowRiskBars: (show: boolean) => void;
   setShowRiskStacks: (show: boolean) => void;
   setShowRoutes: (show: boolean) => void;
+  /** Open (true) or close (false) the full-viewport 3D temporal view. */
+  setTemporalView: (open: boolean) => void;
   // --- Journey / time mechanics ---
   setJourneyParams: (patch: Partial<JourneyParams>) => void;
   setDayNight: (config: DayNightConfig) => void;

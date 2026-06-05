@@ -21,7 +21,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      // Multi-page: the app plus the throwaway 3D temporal spike (temporal3d.html).
+      // Multi-page: the app plus the standalone 3D temporal view (temporal3d.html).
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         temporal3d: fileURLToPath(new URL('./temporal3d.html', import.meta.url)),

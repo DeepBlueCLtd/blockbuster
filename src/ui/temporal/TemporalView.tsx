@@ -1,5 +1,9 @@
 /**
- * THROWAWAY SPIKE — windowed temporal stack with a vertical time-wheel.
+ * 3D temporal view — a windowed temporal stack with a vertical time-wheel.
+ *
+ * Opened full-viewport from the app (via the `temporalView` store flag) and read
+ * purely from the live store, so it always reflects the current data source; it
+ * never mutates state. `onClose` restores the default app.
  *
  * The data is sliced at a chosen interval (5 min … 3 h); a fixed **window of 20
  * layers** centred on the current slice is shown, and the wheel scrolls the
@@ -12,8 +16,6 @@
  * coloured by the real `selectDisplayProfile` pipeline; by default it shows the
  * **temporal Δ** (storm + day/night only) on a transparent background so the
  * base shows through.
- *
- * Delete `src/spike/`, `temporal3d.html` and the extra `vite` input to remove.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
@@ -46,6 +48,10 @@ import type {
 import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { formatTime } from '@/ui/utils/time';
 import { coaColor } from '@/ui/theme';
+import './temporal.css';
+
+// Vertex colours reach the GPU exactly as authored, matching the 2D map.
+THREE.ColorManagement.enabled = false;
 
 const DAY_MIN = 1440;
 const WINDOW = 20; // layers shown at once (= the 5×4 grid)
@@ -414,7 +420,7 @@ function GroundPlane({ extent, opacity }: { extent: WorldExtent; opacity: number
 
 /** Adds the worker-rendered terrain image as a Leaflet overlay (no main-thread
  *  rasterisation); (re)adds it whenever the URL arrives or changes. */
-function SpikeTerrainOverlay({ url, extent }: { url: string | null; extent: WorldExtent }) {
+function BaseTerrainOverlay({ url, extent }: { url: string | null; extent: WorldExtent }) {
   const map = useMap();
   useEffect(() => {
     if (!url) return;
@@ -432,13 +438,12 @@ function SpikeTerrainOverlay({ url, extent }: { url: string | null; extent: Worl
 }
 
 /**
- * SPIKE: the live app Leaflet map, reused as the "permanent base" stand-in to
- * de-risk combining the 2D control with the 3D stack. Its terrain image is
- * generated off the main thread (see terrainRaster.worker) so revealing it
- * never blocks the UI. View-only — interactions are off and it sits behind a
- * transparent canvas.
+ * The live app Leaflet map, reused as the "permanent base" so the 2D base and
+ * the 3D stack stay consistent. Its terrain image is generated off the main
+ * thread (see terrainRaster.worker) so revealing it never blocks the UI.
+ * View-only — interactions are off and it sits behind a transparent canvas.
  */
-function SpikeLeafletMap({ extent, terrainUrl }: { extent: WorldExtent; terrainUrl: string | null }) {
+function BaseLeafletMap({ extent, terrainUrl }: { extent: WorldExtent; terrainUrl: string | null }) {
   const bounds: LatLngBoundsExpression = [
     [0, 0],
     [extent.height, extent.width],
@@ -447,7 +452,7 @@ function SpikeLeafletMap({ extent, terrainUrl }: { extent: WorldExtent; terrainU
     <MapContainer
       crs={CRS.Simple}
       bounds={bounds}
-      className="spike-leaflet"
+      className="temporal-leaflet"
       attributionControl={false}
       zoomControl={false}
       dragging={false}
@@ -455,7 +460,7 @@ function SpikeLeafletMap({ extent, terrainUrl }: { extent: WorldExtent; terrainU
       doubleClickZoom={false}
       keyboard={false}
     >
-      <SpikeTerrainOverlay url={terrainUrl} extent={extent} />
+      <BaseTerrainOverlay url={terrainUrl} extent={extent} />
     </MapContainer>
   );
 }
@@ -859,8 +864,8 @@ function TimeWheel({
     ticks.push({ idx, y: (idx - currentMin / intervalMin) * PX, label: formatTime(mn), current: d === 0 });
   }
   return (
-    <div className="spike-wheel" ref={wheelRef}>
-      <div className="spike-wheel-interval">
+    <div className="temporal-wheel" ref={wheelRef}>
+      <div className="temporal-wheel-interval">
         <span>TIME · every</span>
         <select value={intervalMin} onChange={(e) => setIntervalMin(Number(e.target.value))}>
           {INTERVAL_OPTIONS.map((iv) => (
@@ -871,29 +876,29 @@ function TimeWheel({
         </select>
       </div>
       <div
-        className="spike-wheel-reel"
+        className="temporal-wheel-reel"
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
       >
-        <div className="spike-wheel-band" />
+        <div className="temporal-wheel-band" />
         {ticks.map((t) => (
           <div
             key={t.idx}
-            className={t.current ? 'spike-wheel-tick now' : 'spike-wheel-tick'}
+            className={t.current ? 'temporal-wheel-tick now' : 'temporal-wheel-tick'}
             style={{ transform: `translateY(calc(-50% + ${t.y}px))`, opacity: Math.max(0, 1 - Math.abs(t.y) / 120) }}
           >
             {t.label}
           </div>
         ))}
       </div>
-      <div className="spike-wheel-hint">drag ↕ or scroll · ctrl-scroll = zoom step · flick to spin</div>
+      <div className="temporal-wheel-hint">drag ↕ or scroll · ctrl-scroll = zoom step · flick to spin</div>
     </div>
   );
 }
 
-export function TemporalSpike() {
+export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
   const grid = useBlockbusterStore((s) => s.grid);
   const riskStates = useBlockbusterStore((s) => s.riskStates);
   const zones = useBlockbusterStore((s) => s.zones);
@@ -1107,21 +1112,21 @@ export function TemporalSpike() {
   const mapShown = !showPermanent; // base off → drop in the live Leaflet map
   const mapH = Math.round(MAP_W * (extent.height / extent.width));
 
-  if (!grid || !cells || !baseInfo) return <div className="spike-loading">Building world…</div>;
+  if (!grid || !cells || !baseInfo) return <div className="temporal-loading">Building world…</div>;
 
   return (
-    <div className="spike-root">
+    <div className="temporal-root">
       {mapMounted && (
         <div
-          className="spike-map-layer"
+          className="temporal-map-layer"
           style={{ visibility: mapShown ? 'visible' : 'hidden' }}
         >
           <div
-            className="spike-map-quad"
+            className="temporal-map-quad"
             ref={mapQuadRef}
             style={{ width: MAP_W, height: mapH, opacity: 0 }}
           >
-            <SpikeLeafletMap extent={extent} terrainUrl={terrainUrl} />
+            <BaseLeafletMap extent={extent} terrainUrl={terrainUrl} />
           </div>
         </div>
       )}
@@ -1167,20 +1172,26 @@ export function TemporalSpike() {
         )}
       </Canvas>
 
-      <a className="spike-back" href="index.html">
-        ← Back to map
-      </a>
+      {onClose ? (
+        <button type="button" className="temporal-close" onClick={onClose}>
+          ✕ Close 3D view
+        </button>
+      ) : (
+        <a className="temporal-close" href="index.html">
+          ← Back to map
+        </a>
+      )}
 
-      <div className="spike-panel">
+      <div className="temporal-panel">
         <h1>Temporal risk — windowed</h1>
         <p className="sub">
           {cells.length} cells · {totalSlices} slices · {windowEff}-layer window · the wheel scrolls
           Stack or Grid
         </p>
 
-        <div className="spike-row">
-          <span className="spike-lbl">Layout</span>
-          <div className="spike-seg">
+        <div className="temporal-row">
+          <span className="temporal-lbl">Layout</span>
+          <div className="temporal-seg">
             <button type="button" className={layout === 'stack' ? 'on' : ''} onClick={() => setLayout('stack')}>
               Stack 3D
             </button>
@@ -1190,9 +1201,9 @@ export function TemporalSpike() {
           </div>
         </div>
 
-        <div className="spike-row">
-          <span className="spike-lbl">Hours show</span>
-          <div className="spike-seg">
+        <div className="temporal-row">
+          <span className="temporal-lbl">Hours show</span>
+          <div className="temporal-seg">
             <button
               type="button"
               className={hourlyMode === 'temporal' ? 'on' : ''}
@@ -1210,9 +1221,9 @@ export function TemporalSpike() {
           </div>
         </div>
 
-        <div className="spike-row">
-          <span className="spike-lbl">Grid scroll</span>
-          <div className="spike-seg">
+        <div className="temporal-row">
+          <span className="temporal-lbl">Grid scroll</span>
+          <div className="temporal-seg">
             <button
               type="button"
               className={gridScroll === 'fixed' ? 'on' : ''}
@@ -1230,7 +1241,7 @@ export function TemporalSpike() {
           </div>
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="shade">Shade by</label>
           <select id="shade" value={shadeBy} onChange={(e) => setShadeBy(e.target.value as ShadeBy)}>
             <option value="composite">Composite cost</option>
@@ -1242,7 +1253,7 @@ export function TemporalSpike() {
           </select>
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="spacing">Layer gap</label>
           <input
             id="spacing"
@@ -1253,10 +1264,10 @@ export function TemporalSpike() {
             value={spacing}
             onChange={(e) => setSpacing(Number(e.target.value))}
           />
-          <span className="spike-val">{spacing.toFixed(1)}</span>
+          <span className="temporal-val">{spacing.toFixed(1)}</span>
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="opacity">Opacity</label>
           <input
             id="opacity"
@@ -1267,10 +1278,10 @@ export function TemporalSpike() {
             value={opacity}
             onChange={(e) => setOpacity(Number(e.target.value))}
           />
-          <span className="spike-val">{opacity.toFixed(2)}</span>
+          <span className="temporal-val">{opacity.toFixed(2)}</span>
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="inset">Hex gap</label>
           <input
             id="inset"
@@ -1281,10 +1292,10 @@ export function TemporalSpike() {
             value={inset}
             onChange={(e) => setInset(Number(e.target.value))}
           />
-          <span className="spike-val">{inset.toFixed(2)}</span>
+          <span className="temporal-val">{inset.toFixed(2)}</span>
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="permanent">Permanent base</label>
           <input
             id="permanent"
@@ -1294,7 +1305,7 @@ export function TemporalSpike() {
           />
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="ground">Ground plane</label>
           <input
             id="ground"
@@ -1304,7 +1315,7 @@ export function TemporalSpike() {
           />
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="single">Single map (stack)</label>
           <input
             id="single"
@@ -1314,7 +1325,7 @@ export function TemporalSpike() {
           />
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="rotate">Auto-rotate (stack)</label>
           <input
             id="rotate"
@@ -1324,7 +1335,7 @@ export function TemporalSpike() {
           />
         </div>
 
-        <div className="spike-row">
+        <div className="temporal-row">
           <label htmlFor="routes">Routes</label>
           <input
             id="routes"
@@ -1334,7 +1345,7 @@ export function TemporalSpike() {
           />
         </div>
 
-        <p className="spike-note">
+        <p className="temporal-note">
           Only the {windowEff}-layer window (+buffer) is computed &amp; cached; slices build on the
           fly as you scroll. Permanent base anchors the colour scale and sits beneath the stack —
           switch it off to drop the live Leaflet map onto that plane.
