@@ -3,12 +3,17 @@
  * when you orbit it in 3D? (Stakeholder's "z-axis for temporal perspective"
  * idea.) This is a viewer, not a feature: no editing, no routes, no Leaflet.
  *
- * It is deliberately faithful, not faked: every hex is coloured by the real
- * production pipeline — `selectDisplayProfile` (the same function the time
- * slider drives) → `cellRiskCost` — evaluated at each hour 0…23. The controls
- * expose the obvious occlusion mitigations so we can judge whether any
- * configuration is legible: layer spacing, opacity, decimation (every Nth
- * hour), a single-hour "spotlight", and shade-by-channel.
+ * It is deliberately faithful, not faked:
+ * - The permanent **base grid** (bottom, full opacity) is the non-temporal risk
+ *   — terrain + always-active zones + journey speed, no day/night, no time-zones.
+ * - Each hourly grid above it is coloured by the real production pipeline,
+ *   `selectDisplayProfile` (the same function the time slider drives) →
+ *   `cellRiskCost`, evaluated at that hour. Base + hours share one colour scale.
+ *
+ * Controls expose the obvious occlusion mitigations so we can judge whether any
+ * configuration is legible: layer gap, opacity, decimation (every Nth hour), a
+ * single-hour "spotlight" (with the base grid this reproduces the 2D time
+ * replay over a fixed baseline), and shade-by-channel.
  *
  * Delete `src/spike/`, `temporal3d.html` and the extra `vite` input to remove.
  */
@@ -16,8 +21,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { cellRiskCost, clamp01, RISK_LABELS, RISK_TYPES } from '@domain';
-import type { CostParams, HexCell, RiskType, WorldExtent, WorldPoint } from '@domain';
+import {
+  applyZoneOffsets,
+  cellRiskCost,
+  clamp01,
+  effectiveProfile,
+  RISK_LABELS,
+  RISK_TYPES,
+  speedModifiedProfile,
+} from '@domain';
+import type { CostParams, HexCell, RiskProfile, RiskType, WorldExtent, WorldPoint } from '@domain';
 import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { formatTime } from '@/ui/utils/time';
 
@@ -32,8 +45,14 @@ type ProfileInputs = Omit<Parameters<typeof selectDisplayProfile>[0], 'displayTi
 interface Spotlight {
   on: boolean;
   hour: number;
-  ghostOpacity: number;
   showGhosts: boolean;
+}
+
+interface BuiltLayers {
+  /** Permanent (non-temporal) risk grid. */
+  base: THREE.BufferGeometry;
+  /** One vertex-coloured grid per hour 0…23. */
+  hours: THREE.BufferGeometry[];
 }
 
 /**
@@ -57,67 +76,99 @@ function insetPoint(c: WorldPoint, v: WorldPoint, k: number): WorldPoint {
 }
 
 /**
- * Build one flat, vertex-coloured `BufferGeometry` per hour (all cells fanned
- * into triangles, lying in the X-Z plane at y=0). Heights are applied later via
- * each mesh's position so the spacing control stays cheap.
+ * The permanent, non-temporal risk for a cell: terrain (base + overrides) folded
+ * with always-active zone offsets, then the constant journey-speed modifier — but
+ * none of the time-of-day factors (day/night, time-bounded/moving zones).
  */
-function buildHourGeometries(
+function permanentProfile(inputs: ProfileInputs, cell: HexCell): RiskProfile | null {
+  const rs = inputs.riskStates.get(cell.id);
+  if (!rs) return null;
+  const folded = applyZoneOffsets(effectiveProfile(rs), inputs.zoneContribution.get(cell.id));
+  return speedModifiedProfile(folded, inputs.journeyParams.fixedSpeedKmh);
+}
+
+/** One flat, vertex-coloured grid (all cells fanned into triangles, in the X-Z plane). */
+function makeGridGeometry(
+  cells: readonly HexCell[],
+  ext: WorldExtent,
+  inset: number,
+  tAt: (cellIndex: number) => number,
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  for (let ci = 0; ci < cells.length; ci++) {
+    const cell = cells[ci];
+    if (!cell) continue;
+    const col = heatThreeColor(tAt(ci));
+    const c = cell.center;
+    const [cx, cz] = worldToXZ(c, ext);
+    const verts = cell.vertices;
+    const m = verts.length;
+    for (let i = 0; i < m; i++) {
+      const v1 = verts[i];
+      const v2 = verts[(i + 1) % m];
+      if (!v1 || !v2) continue;
+      const [x1, z1] = worldToXZ(insetPoint(c, v1, inset), ext);
+      const [x2, z2] = worldToXZ(insetPoint(c, v2, inset), ext);
+      positions.push(cx, 0, cz, x1, 0, z1, x2, 0, z2);
+      colors.push(col.r, col.g, col.b, col.r, col.g, col.b, col.r, col.g, col.b);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  return geo;
+}
+
+/**
+ * Build the permanent base grid plus one grid per hour. The real pipeline is
+ * sampled for every cell at every hour; composite costs are normalised against a
+ * single global max (over base *and* hours) so colours compare across the tower.
+ */
+function buildLayers(
   cells: readonly HexCell[],
   inputs: ProfileInputs,
   shadeBy: ShadeBy,
   costParams: CostParams,
   inset: number,
-): THREE.BufferGeometry[] {
-  const ext = inputs.extent;
+): BuiltLayers {
   const n = cells.length;
-
-  // Pass 1 — sample the real pipeline at every hour and find the global max so
-  // composite-cost colours are comparable across the whole tower.
-  const values = new Float32Array(HOURS.length * n);
+  const baseVals = new Float32Array(n);
+  const hourVals = new Float32Array(HOURS.length * n);
   let maxValue = 0;
+
+  const metric = (p: RiskProfile) =>
+    shadeBy === 'composite' ? cellRiskCost(p, costParams) : p[shadeBy];
+
+  for (let ci = 0; ci < n; ci++) {
+    const cell = cells[ci];
+    if (!cell) continue;
+    const p = permanentProfile(inputs, cell);
+    if (!p) continue;
+    const v = metric(p);
+    baseVals[ci] = v;
+    if (v > maxValue) maxValue = v;
+  }
   for (const h of HOURS) {
     const st = { ...inputs, displayTime: h * 60 };
     for (let ci = 0; ci < n; ci++) {
       const cell = cells[ci];
       if (!cell) continue;
-      const profile = selectDisplayProfile(st, cell.id, cell.vertices);
-      if (!profile) continue;
-      const v = shadeBy === 'composite' ? cellRiskCost(profile, costParams) : profile[shadeBy];
-      values[h * n + ci] = v;
+      const p = selectDisplayProfile(st, cell.id, cell.vertices);
+      if (!p) continue;
+      const v = metric(p);
+      hourVals[h * n + ci] = v;
       if (v > maxValue) maxValue = v;
     }
   }
   // Single channels are already 0…1; composite is normalised by the global max.
   const norm = shadeBy === 'composite' ? maxValue || 1 : 1;
 
-  // Pass 2 — assemble geometry.
-  return HOURS.map((h) => {
-    const positions: number[] = [];
-    const colors: number[] = [];
-    for (let ci = 0; ci < n; ci++) {
-      const cell = cells[ci];
-      if (!cell) continue;
-      const t = (values[h * n + ci] ?? 0) / norm;
-      const col = heatThreeColor(t);
-      const c = cell.center;
-      const [cx, cz] = worldToXZ(c, ext);
-      const verts = cell.vertices;
-      const m = verts.length;
-      for (let i = 0; i < m; i++) {
-        const v1 = verts[i];
-        const v2 = verts[(i + 1) % m];
-        if (!v1 || !v2) continue;
-        const [x1, z1] = worldToXZ(insetPoint(c, v1, inset), ext);
-        const [x2, z2] = worldToXZ(insetPoint(c, v2, inset), ext);
-        positions.push(cx, 0, cz, x1, 0, z1, x2, 0, z2);
-        colors.push(col.r, col.g, col.b, col.r, col.g, col.b, col.r, col.g, col.b);
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    return geo;
-  });
+  const base = makeGridGeometry(cells, inputs.extent, inset, (ci) => (baseVals[ci] ?? 0) / norm);
+  const hours = HOURS.map((h) =>
+    makeGridGeometry(cells, inputs.extent, inset, (ci) => (hourVals[h * n + ci] ?? 0) / norm),
+  );
+  return { base, hours };
 }
 
 /** three's OrbitControls, wrapped for R3F (target follows the tower's mid-height). */
@@ -154,10 +205,10 @@ function Orbit({ targetY, autoRotate }: { targetY: number; autoRotate: boolean }
 }
 
 /** Faint ground footprint + grid, to anchor orientation under the stack. */
-function BasePlate({ extent, show }: { extent: WorldExtent; show: boolean }) {
+function GroundPlane({ extent, show }: { extent: WorldExtent; show: boolean }) {
   if (!show) return null;
   return (
-    <group position={[0, -2, 0]}>
+    <group position={[0, -1.5, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[extent.width, extent.height]} />
         <meshBasicMaterial color="#11161f" transparent opacity={0.85} side={THREE.DoubleSide} />
@@ -167,14 +218,18 @@ function BasePlate({ extent, show }: { extent: WorldExtent; show: boolean }) {
   );
 }
 
-function Layers({
-  geometries,
+function Stack({
+  base,
+  hours,
+  showPermanent,
   spacing,
   everyN,
   opacity,
   spotlight,
 }: {
-  geometries: THREE.BufferGeometry[];
+  base: THREE.BufferGeometry;
+  hours: THREE.BufferGeometry[];
+  showPermanent: boolean;
   spacing: number;
   everyN: number;
   opacity: number;
@@ -182,21 +237,27 @@ function Layers({
 }) {
   return (
     <group>
-      {geometries.map((geo, h) => {
+      {/* Permanent (non-temporal) risk — the foundation, always full opacity. */}
+      {showPermanent && (
+        <mesh geometry={base}>
+          <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
+        </mesh>
+      )}
+
+      {hours.map((geo, h) => {
         const decimated = h % everyN === 0;
         let op = opacity;
         let visible = decimated;
         if (spotlight.on) {
           if (h === spotlight.hour) {
-            op = 1;
+            op = 1; // the spotlit hour is solid…
           } else {
-            op = spotlight.ghostOpacity;
-            visible = decimated && spotlight.showGhosts;
+            visible = decimated && spotlight.showGhosts; // …others keep the slider's opacity
           }
         }
         if (!visible) return null;
         return (
-          <mesh key={h} geometry={geo} position={[0, h * spacing, 0]}>
+          <mesh key={h} geometry={geo} position={[0, (h + 1) * spacing, 0]}>
             <meshBasicMaterial
               vertexColors
               transparent
@@ -227,7 +288,8 @@ export function TemporalSpike() {
   const [everyN, setEveryN] = useState(1);
   const [shadeBy, setShadeBy] = useState<ShadeBy>('composite');
   const [inset, setInset] = useState(0.9);
-  const [showBase, setShowBase] = useState(true);
+  const [showPermanent, setShowPermanent] = useState(true);
+  const [showGround, setShowGround] = useState(true);
   const [autoRotate, setAutoRotate] = useState(false);
   const [spotOn, setSpotOn] = useState(false);
   const [spotHour, setSpotHour] = useState(13);
@@ -235,8 +297,8 @@ export function TemporalSpike() {
 
   const cells = grid?.cells;
 
-  const geometries = useMemo(() => {
-    if (!cells) return [];
+  const layers = useMemo(() => {
+    if (!cells) return null;
     const inputs: ProfileInputs = {
       riskStates,
       zoneContribution,
@@ -246,7 +308,7 @@ export function TemporalSpike() {
       extent,
       hexSize,
     };
-    return buildHourGeometries(cells, inputs, shadeBy, costParams, inset);
+    return buildLayers(cells, inputs, shadeBy, costParams, inset);
   }, [
     cells,
     riskStates,
@@ -261,21 +323,30 @@ export function TemporalSpike() {
     inset,
   ]);
 
-  // Free GPU buffers when the geometry set is rebuilt or the view unmounts.
-  useEffect(() => () => geometries.forEach((g) => g.dispose()), [geometries]);
+  // Free GPU buffers when the layer set is rebuilt or the view unmounts.
+  useEffect(
+    () => () => {
+      if (!layers) return;
+      layers.base.dispose();
+      layers.hours.forEach((g) => g.dispose());
+    },
+    [layers],
+  );
 
-  if (!grid || !cells) return <div className="spike-loading">Building world…</div>;
+  if (!grid || !cells || !layers) return <div className="spike-loading">Building world…</div>;
 
-  const spotlight: Spotlight = { on: spotOn, hour: spotHour, ghostOpacity: 0.04, showGhosts };
-  const targetY = (HOURS.length - 1) * spacing * 0.5;
+  const spotlight: Spotlight = { on: spotOn, hour: spotHour, showGhosts };
+  const targetY = HOURS.length * spacing * 0.5;
 
   return (
     <div className="spike-root">
       <Canvas camera={{ position: [62, 48, 80], fov: 45, far: 2000 }}>
         <color attach="background" args={['#0b0e14']} />
-        <BasePlate extent={extent} show={showBase} />
-        <Layers
-          geometries={geometries}
+        <GroundPlane extent={extent} show={showGround} />
+        <Stack
+          base={layers.base}
+          hours={layers.hours}
+          showPermanent={showPermanent}
           spacing={spacing}
           everyN={everyN}
           opacity={opacity}
@@ -291,7 +362,8 @@ export function TemporalSpike() {
       <div className="spike-panel">
         <h1>3D temporal stack — spike</h1>
         <p className="sub">
-          {cells.length} cells × 24 hourly grids. Height = time of day (bottom 00:00 → top 23:00).
+          {cells.length} cells. Permanent base grid + 24 hourly grids; height = time of day (00:00 →
+          23:00).
         </p>
 
         <div className="spike-row">
@@ -389,7 +461,7 @@ export function TemporalSpike() {
               <span className="spike-val">{formatTime(spotHour * 60)}</span>
             </div>
             <div className="spike-row">
-              <label htmlFor="ghosts">Keep others faint</label>
+              <label htmlFor="ghosts">Keep others (at Opacity)</label>
               <input
                 id="ghosts"
                 type="checkbox"
@@ -401,12 +473,22 @@ export function TemporalSpike() {
         )}
 
         <div className="spike-row">
-          <label htmlFor="base">Ground plane</label>
+          <label htmlFor="permanent">Permanent risk grid</label>
           <input
-            id="base"
+            id="permanent"
             type="checkbox"
-            checked={showBase}
-            onChange={(e) => setShowBase(e.target.checked)}
+            checked={showPermanent}
+            onChange={(e) => setShowPermanent(e.target.checked)}
+          />
+        </div>
+
+        <div className="spike-row">
+          <label htmlFor="ground">Ground plane</label>
+          <input
+            id="ground"
+            type="checkbox"
+            checked={showGround}
+            onChange={(e) => setShowGround(e.target.checked)}
           />
         </div>
 
@@ -421,9 +503,10 @@ export function TemporalSpike() {
         </div>
 
         <p className="spike-note">
-          Seeded scenario: a storm band sweeps E→W 08:00–16:00 (raises <em>cold</em>), and
-          day/night shifts <em>animals</em> &amp; <em>humans</em> — so the tower has real temporal
-          structure to look through. Drag to orbit; scroll to zoom.
+          Bottom grid (full opacity) = permanent, <em>non-temporal</em> risk; the 24 grids above add
+          each hour's temporal risk. Spotlight an hour and lower Opacity to replay the day over the
+          fixed baseline. Seeded: a storm sweeps E→W 08:00–16:00 (raises <em>cold</em>); day/night
+          shifts <em>animals</em> &amp; <em>humans</em>. Drag to orbit; scroll to zoom.
         </p>
       </div>
     </div>
