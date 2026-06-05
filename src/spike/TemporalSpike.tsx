@@ -16,7 +16,7 @@
  * Delete `src/spike/`, `temporal3d.html` and the extra `vite` input to remove.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -304,6 +304,7 @@ function Orbit({
   gridCamHeight,
   gridTargetZ,
   stackTargetY,
+  autoRotate,
 }: {
   layout: Layout;
   transitioning: boolean;
@@ -311,6 +312,7 @@ function Orbit({
   gridCamHeight: number;
   gridTargetZ: number;
   stackTargetY: number;
+  autoRotate: boolean;
 }) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -325,6 +327,7 @@ function Orbit({
     const controls = new OrbitControls(camera, gl.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
+    controls.autoRotateSpeed = 0.8;
     ref.current = controls;
     return () => controls.dispose();
   }, [camera, gl]);
@@ -332,7 +335,7 @@ function Orbit({
   useEffect(() => {
     const controls = ref.current;
     if (!controls || transitioning) return;
-    controls.enableRotate = false; // rotation dropped — orbit limited to pan + zoom
+    controls.enableRotate = layout === 'stack'; // grid is top-down; the stack rotates in 3D
     if (layout === 'grid') {
       camera.position.set(-PAN_X_GRID, gridCamHeight, gridTargetZ + gridCamHeight * GRID_TILT);
       controls.target.set(-PAN_X_GRID, 0, gridTargetZ);
@@ -370,9 +373,11 @@ function Orbit({
       cam.zoom = lerp(fromZoom.current, orthoZoom(toPos.distanceTo(toTarget)), p);
       cam.updateProjectionMatrix();
       controls.enabled = false;
+      controls.autoRotate = false;
     } else {
       animating.current = false;
       controls.enabled = true;
+      controls.autoRotate = layout === 'stack' && autoRotate;
     }
     controls.update();
   });
@@ -520,6 +525,9 @@ function TimeWheel({
   const inertiaRaf = useRef(0);
   const curRef = useRef(currentMin);
   curRef.current = currentMin;
+  const cfgRef = useRef({ interval: intervalMin, max: maxMin });
+  cfgRef.current = { interval: intervalMin, max: maxMin };
+  const wheelRef = useRef<HTMLDivElement | null>(null);
 
   const stopInertia = () => {
     if (inertiaRaf.current) {
@@ -579,13 +587,28 @@ function TimeWheel({
     };
     inertiaRaf.current = requestAnimationFrame(step);
   };
-  const onWheel = (e: ReactWheelEvent) => {
-    stopInertia();
-    const i = INTERVAL_OPTIONS.findIndex((x) => x === intervalMin);
-    const ni = clampN((i < 0 ? 1 : i) + Math.sign(e.deltaY), 0, INTERVAL_OPTIONS.length - 1);
-    const next = INTERVAL_OPTIONS[ni];
-    if (next !== undefined && next !== intervalMin) setIntervalMin(next);
-  };
+  // Wheel over the controller scrubs time a slice at a time. Native + non-passive
+  // so it can preventDefault — which also stops the page and the native <select>
+  // from cycling when the pointer is over the interval dropdown.
+  useEffect(() => {
+    const el = wheelRef.current;
+    if (!el) return;
+    const onWheelNative = (e: WheelEvent) => {
+      e.preventDefault();
+      if (inertiaRaf.current) {
+        cancelAnimationFrame(inertiaRaf.current);
+        inertiaRaf.current = 0;
+      }
+      if (e.deltaY === 0) return;
+      const { interval, max } = cfgRef.current;
+      const slice = Math.round(curRef.current / interval);
+      const next = clampN((slice + Math.sign(e.deltaY)) * interval, 0, max);
+      curRef.current = next;
+      setCurrentMin(next);
+    };
+    el.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => el.removeEventListener('wheel', onWheelNative);
+  }, [setCurrentMin]);
 
   const cur = Math.round(currentMin / intervalMin);
   const ticks: { idx: number; y: number; label: string; current: boolean }[] = [];
@@ -596,7 +619,7 @@ function TimeWheel({
     ticks.push({ idx, y: (idx - currentMin / intervalMin) * PX, label: formatTime(mn), current: d === 0 });
   }
   return (
-    <div className="spike-wheel">
+    <div className="spike-wheel" ref={wheelRef}>
       <div className="spike-wheel-interval">
         <span>TIME · every</span>
         <select value={intervalMin} onChange={(e) => setIntervalMin(Number(e.target.value))}>
@@ -613,7 +636,6 @@ function TimeWheel({
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
-        onWheel={onWheel}
       >
         <div className="spike-wheel-band" />
         {ticks.map((t) => (
@@ -626,7 +648,7 @@ function TimeWheel({
           </div>
         ))}
       </div>
-      <div className="spike-wheel-hint">drag ↕ time · flick to spin · scroll = interval</div>
+      <div className="spike-wheel-hint">drag ↕ or scroll · flick to spin</div>
     </div>
   );
 }
@@ -655,6 +677,7 @@ export function TemporalSpike() {
   const [showPermanent, setShowPermanent] = useState(true);
   const [showGround, setShowGround] = useState(true);
   const [singleMap, setSingleMap] = useState(false);
+  const [autoRotate, setAutoRotate] = useState(false);
 
   // Layout morph: 0 = grid, 1 = stack, animated on toggle.
   const [morph, setMorph] = useState(1);
@@ -796,6 +819,7 @@ export function TemporalSpike() {
           gridCamHeight={framing.height}
           gridTargetZ={framing.targetZ}
           stackTargetY={stackTargetY}
+          autoRotate={autoRotate}
         />
       </Canvas>
 
@@ -943,6 +967,16 @@ export function TemporalSpike() {
             type="checkbox"
             checked={singleMap}
             onChange={(e) => setSingleMap(e.target.checked)}
+          />
+        </div>
+
+        <div className="spike-row">
+          <label htmlFor="rotate">Auto-rotate (stack)</label>
+          <input
+            id="rotate"
+            type="checkbox"
+            checked={autoRotate}
+            onChange={(e) => setAutoRotate(e.target.checked)}
           />
         </div>
 
