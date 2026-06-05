@@ -33,9 +33,19 @@ import {
   RISK_TYPES,
   speedModifiedProfile,
 } from '@domain';
-import type { CostParams, HexCell, RiskProfile, RiskType, WorldExtent, WorldPoint } from '@domain';
+import type {
+  CostParams,
+  HexCell,
+  HexGrid,
+  RiskProfile,
+  RiskType,
+  RoutePlan,
+  WorldExtent,
+  WorldPoint,
+} from '@domain';
 import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { formatTime } from '@/ui/utils/time';
+import { coaColor } from '@/ui/theme';
 
 const DAY_MIN = 1440;
 const WINDOW = 20; // layers shown at once (= the 5×4 grid)
@@ -475,6 +485,92 @@ function MapPlaneTransform({
   return null;
 }
 
+type Pt2 = readonly [number, number];
+
+interface RoutePoly {
+  color: THREE.Color;
+  pts: Pt2[];
+  times: number[];
+  faintGeo: THREE.BufferGeometry | null;
+}
+
+/** A flat ribbon (triangle list) following `pts` in the X-Z plane at height `y`. */
+function ribbonGeometry(pts: readonly Pt2[], halfWidth: number, y: number): THREE.BufferGeometry | null {
+  const n = pts.length;
+  if (n < 2) return null;
+  const left: Pt2[] = new Array(n);
+  const right: Pt2[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    const prev = pts[i - 1] ?? p;
+    const next = pts[i + 1] ?? p;
+    if (!p || !prev || !next) continue;
+    let dx = next[0] - prev[0];
+    let dz = next[1] - prev[1];
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len;
+    dz /= len;
+    const nx = -dz * halfWidth;
+    const nz = dx * halfWidth;
+    left[i] = [p[0] + nx, p[1] + nz];
+    right[i] = [p[0] - nx, p[1] - nz];
+  }
+  const pos: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const l0 = left[i];
+    const r0 = right[i];
+    const l1 = left[i + 1];
+    const r1 = right[i + 1];
+    if (!l0 || !r0 || !l1 || !r1) continue;
+    pos.push(l0[0], y, l0[1], r0[0], y, r0[1], r1[0], y, r1[1]);
+    pos.push(l0[0], y, l0[1], r1[0], y, r1[1], l1[0], y, l1[1]);
+  }
+  if (pos.length === 0) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  return g;
+}
+
+/** Sub-path of `pts` whose segments are traversed within ±`win` minutes of `t`. */
+function activeSubPath(pts: readonly Pt2[], times: readonly number[], t: number, win: number): Pt2[] {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let j = 0; j < pts.length - 1; j++) {
+    const a = times[j];
+    const b = times[j + 1];
+    if (a === undefined || b === undefined) continue;
+    if (a < t + win && b > t - win) {
+      if (j < lo) lo = j;
+      if (j + 1 > hi) hi = j + 1;
+    }
+  }
+  if (lo === Infinity || hi <= lo) return [];
+  return pts.slice(lo, hi + 1);
+}
+
+/** Project each COA onto base X-Z, keeping per-point arrival times for the highlight. */
+function buildRoutePolys(plan: RoutePlan, grid: HexGrid, extent: WorldExtent): RoutePoly[] {
+  return plan.coas.map((coa, idx) => {
+    const pts: Pt2[] = [];
+    const times: number[] = [];
+    for (let i = 0; i < coa.path.length; i++) {
+      const id = coa.path[i];
+      const step = coa.steps[i];
+      const cell = id != null ? grid.get(id) : undefined;
+      if (!cell || !step) continue;
+      const [x, z] = worldToXZ(cell.center, extent);
+      pts.push([x, z]);
+      times.push(step.arrivalTimeMinutes);
+    }
+    return {
+      color: new THREE.Color(coaColor(idx)),
+      pts,
+      times,
+      faintGeo: ribbonGeometry(pts, 0.35, 0.34),
+    };
+  });
+}
+
 /** The whole scene, morphed between grid (0) and stack (1), windowed on the current slice. */
 function Scene({
   base,
@@ -494,6 +590,9 @@ function Scene({
   windowStart,
   intervalMin,
   frameGeo,
+  showRoutes3d,
+  routePolys,
+  activeRibbons,
 }: {
   base: THREE.BufferGeometry;
   baseLabel: THREE.Texture;
@@ -512,6 +611,9 @@ function Scene({
   windowStart: number;
   intervalMin: number;
   frameGeo: THREE.BufferGeometry;
+  showRoutes3d: boolean;
+  routePolys: RoutePoly[];
+  activeRibbons: Map<number, { color: THREE.Color; geo: THREE.BufferGeometry }[]>;
 }) {
   const m = smoothstep(morph);
   const baseZ = lerp(baseRowZ(extent), 0, m);
@@ -575,6 +677,34 @@ function Scene({
                 depthTest={false}
               />
             </sprite>
+            {showRoutes3d &&
+              routePolys.map((r, ci) =>
+                r.faintGeo ? (
+                  <mesh key={`rf${ci}`} geometry={r.faintGeo} renderOrder={2}>
+                    <meshBasicMaterial
+                      color={r.color}
+                      transparent
+                      opacity={0.3 * (isCurrent ? 1 : 0.55)}
+                      side={THREE.DoubleSide}
+                      depthWrite={false}
+                      depthTest={false}
+                    />
+                  </mesh>
+                ) : null,
+              )}
+            {showRoutes3d &&
+              (activeRibbons.get(index) ?? []).map((a, ci) => (
+                <mesh key={`ra${ci}`} geometry={a.geo} renderOrder={3}>
+                  <meshBasicMaterial
+                    color={a.color}
+                    transparent
+                    opacity={0.95}
+                    side={THREE.DoubleSide}
+                    depthWrite={false}
+                    depthTest={false}
+                  />
+                </mesh>
+              ))}
           </group>
         );
       })}
@@ -753,10 +883,13 @@ export function TemporalSpike() {
   const hexSize = useBlockbusterStore((s) => s.hexSize);
   const costParams = useBlockbusterStore((s) => s.costParams);
   const terrain = useBlockbusterStore((s) => s.terrain);
+  const plan = useBlockbusterStore((s) => s.plan);
 
   const [layout, setLayout] = useState<Layout>('stack');
   const [intervalMin, setIntervalMin] = useState(15);
-  const [currentMin, setCurrentMin] = useState(12 * 60);
+  // Default into the journey window (default route departs 08:00, ~3 h) so the
+  // per-slice route highlight is visible on load.
+  const [currentMin, setCurrentMin] = useState(9 * 60);
   const [gridScroll, setGridScroll] = useState<GridScroll>('fixed');
   const [spacing, setSpacing] = useState(2.5);
   const [opacity, setOpacity] = useState(0.5);
@@ -767,6 +900,7 @@ export function TemporalSpike() {
   const [showGround, setShowGround] = useState(true);
   const [singleMap, setSingleMap] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
+  const [showRoutes3d, setShowRoutes3d] = useState(true);
 
   // Layout morph: 0 = grid, 1 = stack, animated on toggle.
   const [morph, setMorph] = useState(1);
@@ -866,6 +1000,40 @@ export function TemporalSpike() {
     }
   }, [cache, windowStart, windowEff]);
 
+  // COA routes (default waypoints are seeded by regenerate). The faint full
+  // route is shared across slices; the wide "previous → next step" highlight is
+  // per-slice and rebuilt only when the window shifts.
+  const routePolys = useMemo(
+    () => (plan && grid ? buildRoutePolys(plan, grid, extent) : []),
+    [plan, grid, extent],
+  );
+  useEffect(
+    () => () => {
+      for (const r of routePolys) r.faintGeo?.dispose();
+    },
+    [routePolys],
+  );
+  const activeRibbons = useMemo(() => {
+    const map = new Map<number, { color: THREE.Color; geo: THREE.BufferGeometry }[]>();
+    for (let j = 0; j < windowEff; j++) {
+      const index = windowStart + j;
+      const t = index * intervalMin;
+      const arr: { color: THREE.Color; geo: THREE.BufferGeometry }[] = [];
+      for (const r of routePolys) {
+        const geo = ribbonGeometry(activeSubPath(r.pts, r.times, t, intervalMin), 1.2, 0.5);
+        if (geo) arr.push({ color: r.color, geo });
+      }
+      if (arr.length) map.set(index, arr);
+    }
+    return map;
+  }, [routePolys, windowStart, windowEff, intervalMin]);
+  useEffect(
+    () => () => {
+      for (const arr of activeRibbons.values()) for (const a of arr) a.geo.dispose();
+    },
+    [activeRibbons],
+  );
+
   const baseLabel = useMemo(() => getLabel('Permanent'), []);
   const frameGeo = useMemo(() => frameBandGeometry(extent, 2.4), [extent]);
   useEffect(() => () => frameGeo.dispose(), [frameGeo]);
@@ -919,6 +1087,9 @@ export function TemporalSpike() {
           windowStart={windowStart}
           intervalMin={intervalMin}
           frameGeo={frameGeo}
+          showRoutes3d={showRoutes3d}
+          routePolys={routePolys}
+          activeRibbons={activeRibbons}
         />
         <Orbit
           layout={layout}
@@ -1088,6 +1259,16 @@ export function TemporalSpike() {
             type="checkbox"
             checked={autoRotate}
             onChange={(e) => setAutoRotate(e.target.checked)}
+          />
+        </div>
+
+        <div className="spike-row">
+          <label htmlFor="routes">Routes</label>
+          <input
+            id="routes"
+            type="checkbox"
+            checked={showRoutes3d}
+            onChange={(e) => setShowRoutes3d(e.target.checked)}
           />
         </div>
 
