@@ -43,23 +43,22 @@ npx vitest run -t "name of the test"
 `typecheck` + `lint` + `test:run` + `build` locally before pushing; they are all
 expected to stay green.
 
-## Mock engine vs. real engine — important
+## Real engine vs. the retained mock
 
-The app **runs today on a mock**. The four real engine modules under
-`src/engine/*` (`mapgen`, `hexgrid`, `risk`, `routing`) are **stubs whose
-`create*()` factories throw `"not implemented"`**. The working implementations
-live in `src/mocks/mockEngine.ts`, with deterministic golden fixtures in
-`src/mocks/fixtures.ts`.
+The app **runs on the real engine**. The four engine modules under `src/engine/*`
+(`mapgen`, `hexgrid`, `risk`, `routing`) are implemented, and `createEngine()`
+(`src/engine/index.ts`) wires them together. `src/state/store.ts` injects that
+into the app singleton — `createBlockbusterStore(createEngine())`.
 
-- `src/state/store.ts` wires the app singleton to `createMockEngine()`.
-- Switching to the real engine is a **one-line change**: `createMockEngine()` →
-  `createEngine()` (from `src/engine`). During transition, compose a hybrid,
-  e.g. `{ ...createMockEngine(), gridBuilder: createGridBuilder() }`, to adopt
-  finished modules one at a time.
-- The mock is the **executable reference**: a real module is "done" when dropping
-  its `create*()` into `createEngine()` makes the app behave identically or
-  better. Each engine module ships a `*.test.ts` with acceptance criteria as
-  `it.todo` — turn those green as you build.
+- The deterministic **mock** under `src/mocks/*` (`mockEngine.ts` + `fixtures.ts`)
+  has been **dropped from the app's runtime path**. It is retained as the living
+  reference and as fixture/test data — `store.test.ts`, the routing tests and the
+  golden fixtures still build on it.
+- The mock stays the behavioural yardstick: a change to a real module should keep
+  the app behaving identically or better. Each engine module ships a colocated
+  `*.test.ts` with its acceptance criteria — keep those green.
+- To swap an implementation for debugging, compose an `Engine` by hand, e.g.
+  `{ ...createEngine(), gridBuilder: createMockEngine().gridBuilder }`.
 
 ## Architecture — the rules that matter
 
