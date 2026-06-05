@@ -4,7 +4,14 @@ import { RISK_TYPES } from './risk';
 import { DEFAULT_APPETITE } from './risk';
 import { clamp01 } from './units';
 import type { DayNightConfig } from './journey';
-import { SPEED_MIN_KMH, SPEED_MAX_KMH, NIGHT_START, NIGHT_END } from './journey';
+import {
+  SPEED_MIN_KMH,
+  SPEED_MAX_KMH,
+  NIGHT_START,
+  NIGHT_END,
+  DEEP_SLEEP_START,
+  DEEP_SLEEP_END,
+} from './journey';
 
 /**
  * Parameters of the traversal cost function. This is shared kernel on purpose:
@@ -96,15 +103,19 @@ export function speedModifiedProfile(profile: RiskProfile, speedKmh: number): Ri
 /**
  * Day/night multiplier on a risk channel.
  * Night window = NIGHT_START (20:00) through NIGHT_END (06:00), wrapping midnight.
- * Animals ×0.5 at night; human ×1.5 at night; others unchanged.
+ * Animals ×0.5 at night. Human ×1.5 at night — except in the deepest-sleep
+ * window (01:00–05:00) where it drops to ×0.5 (towns asleep). Others unchanged.
  */
 export function dayNightModifier(riskType: RiskType, timeMinutes: number): number {
   const isNight = timeMinutes >= NIGHT_START || timeMinutes < NIGHT_END;
   switch (riskType) {
     case 'animals':
       return isNight ? 0.5 : 1;
-    case 'human':
+    case 'human': {
+      const isDeepSleep = timeMinutes >= DEEP_SLEEP_START && timeMinutes < DEEP_SLEEP_END;
+      if (isDeepSleep) return 0.5;
       return isNight ? 1.5 : 1;
+    }
     default:
       return 1;
   }

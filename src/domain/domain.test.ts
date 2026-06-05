@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cellRiskCost,
+  dayNightModifier,
   effectiveProfile,
   parseCellId,
   riskCostBreakdown,
@@ -55,6 +56,15 @@ describe('cost function', () => {
     const low = cellRiskCost(uniformProfile(0.2), params);
     const high = cellRiskCost(uniformProfile(0.8), params);
     expect(high).toBeGreaterThan(low);
+  });
+});
+
+describe('dayNightModifier (human)', () => {
+  it('peaks at night but drops in the 01:00–05:00 deep-sleep window', () => {
+    expect(dayNightModifier('human', 12 * 60)).toBe(1); // midday baseline
+    expect(dayNightModifier('human', 22 * 60)).toBe(1.5); // evening, more threat
+    expect(dayNightModifier('human', 3 * 60)).toBe(0.5); // deep sleep, towns asleep
+    expect(dayNightModifier('human', 5 * 60 + 30)).toBe(1.5); // after deep sleep, still night
   });
 });
 
