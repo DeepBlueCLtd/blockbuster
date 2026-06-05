@@ -1,7 +1,7 @@
 import { cycloneEyeAt } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import { formatTime } from '@/ui/utils/time';
-import { RISK_COLORS } from '@/ui/theme';
+import { WIND_ARROW_COLOR } from '@/ui/theme';
 
 /**
  * Key to the wind overlay: what the arrows mean and how the route chevrons read.
@@ -19,8 +19,8 @@ export function WindLegend() {
   return (
     <div className="map-legend map-legend--wind">
       <span className="legend-item">
-        <i className="wind-glyph" style={{ color: RISK_COLORS.cold }}>
-          →
+        <i className="wind-glyph" style={{ color: WIND_ARROW_COLOR }}>
+          ➔
         </i>
         Wind direction
       </span>

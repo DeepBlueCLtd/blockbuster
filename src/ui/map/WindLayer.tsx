@@ -3,7 +3,7 @@ import type { PathOptions } from 'leaflet';
 import type { WorldPoint } from '@domain';
 import { cycloneEyeAt, windAt, windEffect } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
-import { RISK_COLORS } from '@/ui/theme';
+import { COA_HALO_COLOR, RISK_COLORS, WIND_ARROW_COLOR } from '@/ui/theme';
 import { worldRingToLatLng } from './projection';
 
 /**
@@ -48,9 +48,9 @@ function arrowPoints(p: WorldPoint, dir: WorldPoint, len: number): WorldPoint[] 
   const half = len / 2;
   const head = { x: p.x + dir.x * half, y: p.y + dir.y * half };
   const tail = { x: p.x - dir.x * half, y: p.y - dir.y * half };
-  const back = { x: head.x - dir.x * len * 0.4, y: head.y - dir.y * len * 0.4 };
+  const back = { x: head.x - dir.x * len * 0.45, y: head.y - dir.y * len * 0.45 };
   const perp = { x: -dir.y, y: dir.x };
-  const wing = len * 0.26;
+  const wing = len * 0.36;
   return [
     tail,
     head,
@@ -86,17 +86,17 @@ export function WindLayer() {
   const eye = cycloneEyeAt(cyclone, displayTime);
   if (!eye) return null;
 
-  // 1) The wind field: a coarse grid of direction arrows at the display time.
-  const step = Math.min(6, Math.max(3, Math.min(extent.width, extent.height) / 8));
-  const arrowLen = step * 0.85;
+  // 1) The wind field: a grid of bold direction arrows at the display time.
+  const step = Math.min(5, Math.max(2.6, Math.min(extent.width, extent.height) / 10));
+  const arrowLen = step * 1.05;
   const arrows: { points: WorldPoint[]; opacity: number; key: string }[] = [];
   for (let x = step / 2; x < extent.width; x += step) {
     for (let y = step / 2; y < extent.height; y += step) {
       const w = windAt(cyclone, { x, y }, displayTime);
-      if (!w || w.strength < 0.08) continue;
+      if (!w || w.strength < 0.06) continue;
       arrows.push({
-        points: arrowPoints({ x, y }, w.dir, arrowLen * (0.45 + 0.55 * w.strength)),
-        opacity: 0.3 + 0.55 * w.strength,
+        points: arrowPoints({ x, y }, w.dir, arrowLen * (0.6 + 0.4 * w.strength)),
+        opacity: 0.8 + 0.2 * w.strength,
         key: `${x.toFixed(1)},${y.toFixed(1)}`,
       });
     }
@@ -147,32 +147,59 @@ export function WindLayer() {
 
   return (
     <>
-      <Polygon
-        positions={worldRingToLatLng(worldCircleRing(eye, cyclone.outerRadiusKm))}
-        interactive={false}
-        pathOptions={reach}
-      />
-      <Polyline
-        positions={worldRingToLatLng([
-          ...worldCircleRing(eye, cyclone.maxWindRadiusKm),
-          worldCircleRing(eye, cyclone.maxWindRadiusKm)[0]!,
-        ])}
-        interactive={false}
-        pathOptions={eyewall}
-      />
-      <Polygon
-        positions={worldRingToLatLng(worldCircleRing(eye, Math.max(0.4, cyclone.eyeRadiusKm), 24))}
-        interactive={false}
-        pathOptions={eyeFill}
-      />
-      {arrows.map((a) => (
-        <Polyline
-          key={a.key}
-          positions={worldRingToLatLng(a.points)}
+      {/* The whole field sits in its own pane, above the terrain and hex shading,
+          so the arrows are never washed out by what's beneath them. */}
+      <Pane name="wind-field" style={{ zIndex: 420 }}>
+        <Polygon
+          positions={worldRingToLatLng(worldCircleRing(eye, cyclone.outerRadiusKm))}
           interactive={false}
-          pathOptions={{ color: WIND_COLOR, weight: 2, opacity: a.opacity }}
+          pathOptions={reach}
         />
-      ))}
+        <Polyline
+          positions={worldRingToLatLng([
+            ...worldCircleRing(eye, cyclone.maxWindRadiusKm),
+            worldCircleRing(eye, cyclone.maxWindRadiusKm)[0]!,
+          ])}
+          interactive={false}
+          pathOptions={eyewall}
+        />
+        <Polygon
+          positions={worldRingToLatLng(
+            worldCircleRing(eye, Math.max(0.4, cyclone.eyeRadiusKm), 24),
+          )}
+          interactive={false}
+          pathOptions={eyeFill}
+        />
+        {/* White casings first, so the bold arrow cores read on any terrain. */}
+        {arrows.map((a) => (
+          <Polyline
+            key={`halo-${a.key}`}
+            positions={worldRingToLatLng(a.points)}
+            interactive={false}
+            pathOptions={{
+              color: COA_HALO_COLOR,
+              weight: 6,
+              opacity: Math.min(0.85, a.opacity),
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+          />
+        ))}
+        {arrows.map((a) => (
+          <Polyline
+            key={a.key}
+            positions={worldRingToLatLng(a.points)}
+            interactive={false}
+            pathOptions={{
+              color: WIND_ARROW_COLOR,
+              weight: 3.5,
+              opacity: a.opacity,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+          />
+        ))}
+      </Pane>
       {/* Route chevrons sit in the topmost vector pane so they read over the COA line. */}
       <Pane name="wind-influence" style={{ zIndex: 440 }}>
         {chevrons.map((c) => (
@@ -180,7 +207,7 @@ export function WindLayer() {
             key={c.key}
             positions={worldRingToLatLng(c.points)}
             interactive={false}
-            pathOptions={{ color: c.color, weight: 4, opacity: c.opacity, lineCap: 'round' }}
+            pathOptions={{ color: c.color, weight: 5, opacity: c.opacity, lineCap: 'round' }}
           />
         ))}
       </Pane>
