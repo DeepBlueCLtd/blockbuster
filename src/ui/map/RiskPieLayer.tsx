@@ -25,10 +25,11 @@ export function RiskPieLayer() {
   const costParams = useBlockbusterStore((s) => s.costParams);
   const extent = useBlockbusterStore((s) => s.extent);
   const hexSize = useBlockbusterStore((s) => s.hexSize);
+  const terrain = useBlockbusterStore((s) => s.terrain);
 
   const pies = useMemo(() => {
     if (!grid || !showRiskPies) return [];
-    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, extent, hexSize };
+    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, extent, hexSize, terrain };
     return grid.cells.flatMap((cell) => {
       const eff = selectDisplayProfile(profileCtx, cell.id, cell.vertices);
       if (!eff) return [];
@@ -40,7 +41,7 @@ export function RiskPieLayer() {
         positions: worldRingToLatLng(slice.ring),
       }));
     });
-  }, [grid, showRiskPies, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams, extent, hexSize]);
+  }, [grid, showRiskPies, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams, extent, hexSize, terrain]);
 
   if (pies.length === 0) return null;
 

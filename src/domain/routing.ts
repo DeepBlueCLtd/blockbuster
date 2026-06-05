@@ -13,6 +13,8 @@ export interface RouteRequest {
   grid: HexGridDto;
   /** Effective (post-override, always-active-zone) risk profile for every cell, keyed by id. */
   risk: Record<CellId, RiskProfile>;
+  /** Town cells (biome === 'town'); their human risk dips in the 01:00–05:00 deep-sleep window. */
+  towns?: CellId[];
   params: CostParams;
   /** Ordered list of cells the route must visit; length ≥ 2. */
   waypoints: CellId[];

@@ -27,10 +27,11 @@ export function RiskBarLayer() {
   const costParams = useBlockbusterStore((s) => s.costParams);
   const extent = useBlockbusterStore((s) => s.extent);
   const hexSize = useBlockbusterStore((s) => s.hexSize);
+  const terrain = useBlockbusterStore((s) => s.terrain);
 
   const bars = useMemo(() => {
     if (!grid || !showRiskBars) return [];
-    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, extent, hexSize };
+    const profileCtx = { riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, extent, hexSize, terrain };
     return grid.cells.flatMap((cell) => {
       const eff = selectDisplayProfile(profileCtx, cell.id, cell.vertices);
       if (!eff) return [];
@@ -42,7 +43,7 @@ export function RiskBarLayer() {
         positions: worldRingToLatLng(rect.ring),
       }));
     });
-  }, [grid, showRiskBars, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams, extent, hexSize]);
+  }, [grid, showRiskBars, riskStates, zoneContribution, zones, displayTime, dayNight, journeyParams, costParams, extent, hexSize, terrain]);
 
   if (bars.length === 0) return null;
 

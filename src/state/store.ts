@@ -271,6 +271,9 @@ export function createBlockbusterStore(engine: Engine) {
         const risk: Record<CellId, RiskProfile> = {};
         for (const [id, state] of s.riskStates)
           risk[id] = applyZoneOffsets(effectiveProfile(state), s.zoneContribution.get(id));
+        // Town cells, so the worker can apply the town-only deep-sleep human dip.
+        const towns: CellId[] = [];
+        for (const [id, sample] of s.terrain) if (sample.biome === 'town') towns.push(id);
         // Zones with time bounds or motion are sent raw to the worker for per-step evaluation.
         const timeVaryingZones = s.zones.filter(
           (z) => z.startTime !== undefined || z.endTime !== undefined || z.motion !== undefined,
@@ -279,6 +282,7 @@ export function createBlockbusterStore(engine: Engine) {
         const request: RouteRequest = {
           grid: toHexGridDto(s.grid),
           risk,
+          towns,
           params: s.costParams,
           waypoints: s.waypoints,
           coaCount: 3,
@@ -479,6 +483,7 @@ export function selectDisplayProfile(
     | 'journeyParams'
     | 'extent'
     | 'hexSize'
+    | 'terrain'
   >,
   cellId: CellId,
   cellVertices: readonly WorldPoint[],
@@ -501,7 +506,8 @@ export function selectDisplayProfile(
     }
     profile = applyZoneOffsets(profile, offsets);
   }
-  profile = applyTemporalModifiers(profile, state.displayTime, state.dayNight);
+  const isTown = state.terrain.get(cellId)?.biome === 'town';
+  profile = applyTemporalModifiers(profile, state.displayTime, state.dayNight, isTown);
   profile = speedModifiedProfile(profile, state.journeyParams.fixedSpeedKmh);
   return profile;
 }

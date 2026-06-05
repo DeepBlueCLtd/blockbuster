@@ -35,3 +35,10 @@ export const SPEED_MAX_KMH = 30;
 /** Night window: 20:00–06:00 (spans midnight). */
 export const NIGHT_START = 20 * 60; // 1200
 export const NIGHT_END = 6 * 60; // 360
+
+/**
+ * Deepest-sleep window: 01:00–05:00. Within it the human threat (dominated by
+ * towns) drops well below the daytime baseline — people are asleep.
+ */
+export const DEEP_SLEEP_START = 1 * 60; // 60
+export const DEEP_SLEEP_END = 5 * 60; // 300

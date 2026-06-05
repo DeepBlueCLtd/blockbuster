@@ -19,6 +19,15 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
+  build: {
+    rollupOptions: {
+      // Multi-page: the app plus the throwaway 3D temporal spike (temporal3d.html).
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        temporal3d: fileURLToPath(new URL('./temporal3d.html', import.meta.url)),
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
