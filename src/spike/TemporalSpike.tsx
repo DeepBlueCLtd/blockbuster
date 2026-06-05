@@ -5,13 +5,13 @@
  * no Leaflet.
  *
  * Faithful, not faked:
- * - The permanent **base grid** is the non-temporal risk — terrain
- *   (mountains/towns) + always-active zones + journey speed, no day/night, no
- *   time-zones. In the stack it is a solid overhanging slab at the bottom; in
- *   the grid it is a labelled map on its own above the hourly tiles.
- * - Each hourly grid is coloured by the real production pipeline,
- *   `selectDisplayProfile` (the same function the time slider drives) →
- *   `cellRiskCost`. Base + hours share one colour scale.
+ * - The permanent **base grid** is the terrain (non-temporal) risk — the live
+ *   map's `selectCellCost` basis. In the stack it is a solid overhanging slab at
+ *   the bottom; in the grid it is a labelled map on its own above the hours.
+ * - The hourly grids default to the **temporal Δ** (storm + day/night only,
+ *   diverging scale) so they show a different source from the terrain and look
+ *   unlike it; a toggle switches them to the full per-hour risk. All values come
+ *   from the real `selectDisplayProfile` pipeline.
  *
  * One scene, two layouts. A `morph` value (0 = grid, 1 = stack) animates every
  * tile between its flat 6×4 slot and its stacked height, so toggling the layout
@@ -30,6 +30,7 @@ import {
   effectiveProfile,
   RISK_LABELS,
   RISK_TYPES,
+  speedModifiedProfile,
 } from '@domain';
 import type { CostParams, HexCell, RiskProfile, RiskType, WorldExtent, WorldPoint } from '@domain';
 import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
@@ -53,6 +54,15 @@ type Layout = 'stack' | 'grid';
 
 /** What a risk cell is shaded by: the composite cost, or one channel's level. */
 type ShadeBy = 'composite' | RiskType;
+
+/**
+ * What the hourly grids show:
+ * - `temporal` — only the temporal contribution (storm + day/night), as a signed
+ *   delta from the no-temporal baseline. Terrain and journey-speed cancel, so the
+ *   hours look nothing like the permanent terrain map (the stakeholder's point).
+ * - `total` — the full risk at that hour (terrain + temporal), like the live map.
+ */
+type HourlyMode = 'temporal' | 'total';
 
 /** The slice of store state `selectDisplayProfile` needs, minus the time. */
 type ProfileInputs = Omit<Parameters<typeof selectDisplayProfile>[0], 'displayTime'>;
@@ -115,6 +125,16 @@ function heatThreeColor(t: number): THREE.Color {
   return new THREE.Color().setHSL(hue / 360, 0.72, 0.48);
 }
 
+// Diverging scale for the temporal delta: pale at zero, red where temporal
+// sources add risk, blue where they remove it.
+const DIVERGING_ZERO = new THREE.Color(0.9, 0.9, 0.84);
+const DIVERGING_POS = new THREE.Color(0.83, 0.12, 0.12);
+const DIVERGING_NEG = new THREE.Color(0.12, 0.4, 0.82);
+function divergingColor(t: number): THREE.Color {
+  const a = Math.min(1, Math.abs(t));
+  return DIVERGING_ZERO.clone().lerp(t >= 0 ? DIVERGING_POS : DIVERGING_NEG, a);
+}
+
 /** World (x, y) km → centred scene (X, Z); hours become the Y axis elsewhere. */
 function worldToXZ(p: WorldPoint, ext: WorldExtent): readonly [number, number] {
   return [p.x - ext.width / 2, -(p.y - ext.height / 2)];
@@ -136,19 +156,31 @@ function permanentProfile(inputs: ProfileInputs, cell: HexCell): RiskProfile | n
   return applyZoneOffsets(effectiveProfile(rs), inputs.zoneContribution.get(cell.id));
 }
 
+/**
+ * The hour's non-temporal baseline for the delta: permanent terrain risk plus the
+ * constant journey-speed modifier — i.e. `selectDisplayProfile` with the storm and
+ * day/night switched off. Subtracting it from the full hour isolates the temporal
+ * sources (terrain and speed cancel).
+ */
+function noTemporalProfile(inputs: ProfileInputs, cell: HexCell): RiskProfile | null {
+  const base = permanentProfile(inputs, cell);
+  if (!base) return null;
+  return speedModifiedProfile(base, inputs.journeyParams.fixedSpeedKmh);
+}
+
 /** One flat, vertex-coloured grid (all cells fanned into triangles, in the X-Z plane). */
 function makeGridGeometry(
   cells: readonly HexCell[],
   ext: WorldExtent,
   inset: number,
-  tAt: (cellIndex: number) => number,
+  colorAt: (cellIndex: number) => THREE.Color,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
   for (let ci = 0; ci < cells.length; ci++) {
     const cell = cells[ci];
     if (!cell) continue;
-    const col = heatThreeColor(tAt(ci));
+    const col = colorAt(ci);
     const c = cell.center;
     const [cx, cz] = worldToXZ(c, ext);
     const verts = cell.vertices;
@@ -171,11 +203,14 @@ function makeGridGeometry(
 
 /**
  * Build the permanent base grid (drawn solid) plus one grid per hour (gapped).
- * The real pipeline is sampled for every cell at every hour. Composite costs are
- * normalised against the **non-temporal base max** — exactly like the live map's
- * `maxCost` (HexGridLayer) — so the permanent grid shows full terrain contrast
- * and temporal spikes (storm/night) saturate to red rather than washing the
- * whole tower out against an inflated global maximum.
+ *
+ * The permanent grid is the terrain (non-temporal) risk on a heat scale, anchored
+ * to its own max — exactly the live map's `maxCost` (HexGridLayer). The hourly
+ * grids are either the full risk (`total`, also heat) or, by default, the
+ * **temporal delta** (`temporal`): each hour minus the no-temporal baseline, on a
+ * diverging scale (red adds risk, blue removes it). The delta strips out terrain
+ * and speed, so the hours show only the storm + day/night — a different source
+ * from the permanent map, and visually unlike it.
  */
 function buildLayers(
   cells: readonly HexCell[],
@@ -183,15 +218,15 @@ function buildLayers(
   shadeBy: ShadeBy,
   costParams: CostParams,
   inset: number,
+  hourlyMode: HourlyMode,
 ): BuiltLayers {
   const n = cells.length;
+  const isComposite = shadeBy === 'composite';
+  const metric = (p: RiskProfile) => (isComposite ? cellRiskCost(p, costParams) : p[shadeBy]);
+
+  // Permanent terrain risk.
   const baseVals = new Float32Array(n);
-  const hourVals = new Float32Array(HOURS.length * n);
   let baseMax = 0;
-
-  const metric = (p: RiskProfile) =>
-    shadeBy === 'composite' ? cellRiskCost(p, costParams) : p[shadeBy];
-
   for (let ci = 0; ci < n; ci++) {
     const cell = cells[ci];
     if (!cell) continue;
@@ -199,25 +234,41 @@ function buildLayers(
     if (!p) continue;
     const v = metric(p);
     baseVals[ci] = v;
-    if (v > baseMax) baseMax = v; // scale is anchored to the base only…
+    if (v > baseMax) baseMax = v;
   }
+  // Single channels are already 0…1; composite divides by the base max.
+  const baseNorm = isComposite ? baseMax || 1 : 1;
+
+  // Hours: full risk, or the signed temporal delta from the no-temporal baseline.
+  const hourVals = new Float32Array(HOURS.length * n);
+  let maxAbsDelta = 1e-9;
   for (const h of HOURS) {
     const st = { ...inputs, displayTime: h * 60 };
     for (let ci = 0; ci < n; ci++) {
       const cell = cells[ci];
       if (!cell) continue;
-      const p = selectDisplayProfile(st, cell.id, cell.vertices);
-      if (!p) continue;
-      hourVals[h * n + ci] = metric(p); // …not the (storm/night-inflated) hours
+      const full = selectDisplayProfile(st, cell.id, cell.vertices);
+      if (!full) continue;
+      if (hourlyMode === 'temporal') {
+        const baseline = noTemporalProfile(inputs, cell);
+        const d = baseline ? metric(full) - metric(baseline) : 0;
+        hourVals[h * n + ci] = d;
+        if (Math.abs(d) > maxAbsDelta) maxAbsDelta = Math.abs(d);
+      } else {
+        hourVals[h * n + ci] = metric(full);
+      }
     }
   }
-  // Single channels are already 0…1; composite divides by the base max. Values
-  // above it (storm/night) clamp to red in heatThreeColor.
-  const norm = shadeBy === 'composite' ? baseMax || 1 : 1;
 
-  const base = makeGridGeometry(cells, inputs.extent, 1, (ci) => (baseVals[ci] ?? 0) / norm);
+  const base = makeGridGeometry(cells, inputs.extent, 1, (ci) =>
+    heatThreeColor((baseVals[ci] ?? 0) / baseNorm),
+  );
   const hours = HOURS.map((h) =>
-    makeGridGeometry(cells, inputs.extent, inset, (ci) => (hourVals[h * n + ci] ?? 0) / norm),
+    makeGridGeometry(cells, inputs.extent, inset, (ci) =>
+      hourlyMode === 'temporal'
+        ? divergingColor((hourVals[h * n + ci] ?? 0) / maxAbsDelta)
+        : heatThreeColor((hourVals[h * n + ci] ?? 0) / baseNorm),
+    ),
   );
   return { base, hours };
 }
@@ -438,6 +489,7 @@ export function TemporalSpike() {
   const [opacity, setOpacity] = useState(0.5);
   const [everyN, setEveryN] = useState(1);
   const [shadeBy, setShadeBy] = useState<ShadeBy>('composite');
+  const [hourlyMode, setHourlyMode] = useState<HourlyMode>('temporal');
   const [inset, setInset] = useState(0.9);
   const [showPermanent, setShowPermanent] = useState(true);
   const [showGround, setShowGround] = useState(true);
@@ -483,7 +535,7 @@ export function TemporalSpike() {
       extent,
       hexSize,
     };
-    return buildLayers(cells, inputs, shadeBy, costParams, inset);
+    return buildLayers(cells, inputs, shadeBy, costParams, inset, hourlyMode);
   }, [
     cells,
     riskStates,
@@ -496,6 +548,7 @@ export function TemporalSpike() {
     shadeBy,
     costParams,
     inset,
+    hourlyMode,
   ]);
 
   useEffect(
@@ -568,6 +621,18 @@ export function TemporalSpike() {
           <select id="layout" value={layout} onChange={(e) => setLayout(e.target.value as Layout)}>
             <option value="stack">Stack (3D)</option>
             <option value="grid">Grid (6×4)</option>
+          </select>
+        </div>
+
+        <div className="spike-row">
+          <label htmlFor="hours">Hours show</label>
+          <select
+            id="hours"
+            value={hourlyMode}
+            onChange={(e) => setHourlyMode(e.target.value as HourlyMode)}
+          >
+            <option value="temporal">Temporal Δ</option>
+            <option value="total">Total risk</option>
           </select>
         </div>
 
@@ -711,18 +776,19 @@ export function TemporalSpike() {
           </>
         )}
 
-        {layout === 'stack' ? (
-          <p className="spike-note">
-            Solid slab at the bottom = permanent, <em>non-temporal</em> risk; the 24 translucent
-            grids above add each hour's temporal risk. Spotlight an hour and lower Opacity to replay
-            the day over the fixed baseline. Drag to orbit; scroll to zoom.
-          </p>
-        ) : (
-          <p className="spike-note">
-            24 hourly maps as small multiples (00:00 → 23:00), with the permanent (non-temporal) map
-            on its own above them. Same data and colour scale as the stack.
-          </p>
-        )}
+        <p className="spike-note">
+          {layout === 'stack'
+            ? 'Solid slab at the bottom = permanent terrain risk; the 24 grids above are the hourly layers.'
+            : 'Permanent terrain map on top; the 24 hourly maps below it (00:00 → 23:00).'}{' '}
+          {hourlyMode === 'temporal' ? (
+            <>
+              Hours show the temporal <em>Δ</em> only (storm + day/night): red adds risk, blue
+              removes it, pale = no change — so they look nothing like the terrain map.
+            </>
+          ) : (
+            <>Hours show the full risk (terrain + temporal) on the same heat scale as the terrain map.</>
+          )}
+        </p>
         <p className="spike-note">
           Seeded: a storm sweeps E→W 08:00–16:00 (raises <em>cold</em>); day/night shifts{' '}
           <em>animals</em> &amp; <em>humans</em>.
