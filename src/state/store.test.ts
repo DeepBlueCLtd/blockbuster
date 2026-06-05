@@ -98,6 +98,15 @@ describe('store — extra-risk zones', () => {
     expect(cyclone?.outerRadiusKm).toBeGreaterThan(0);
   });
 
+  it('toggles the cyclone (weather) on and off', () => {
+    store.getState().regenerate(1);
+    expect(store.getState().cyclone?.enabled).toBe(true);
+    store.getState().toggleCyclone();
+    expect(store.getState().cyclone?.enabled).toBe(false);
+    store.getState().toggleCyclone();
+    expect(store.getState().cyclone?.enabled).toBe(true);
+  });
+
   it('enables day/night on every generated world, re-enabling it on regenerate', () => {
     expect(store.getState().dayNight.enabled).toBe(false); // default, before any build
     store.getState().regenerate(1);

@@ -690,6 +690,17 @@ button:hover {
 }
 
 /* --- Extra-risk tab --- */
+.weather-section {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.extra-subhead {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
 .extra-field {
   display: flex;
   flex-direction: column;

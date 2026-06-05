@@ -467,6 +467,13 @@ export function createBlockbusterStore(engine: Engine) {
       },
       setDrawMode: (mode) => set({ drawMode: mode }),
       setZoneRiskType: (risk) => set({ zoneRiskType: risk }),
+
+      toggleCyclone: () => {
+        const s = get();
+        if (!s.cyclone) return;
+        set({ cyclone: { ...s.cyclone, enabled: !s.cyclone.enabled } });
+        scheduleReplan();
+      },
     };
   });
 }

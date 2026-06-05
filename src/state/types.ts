@@ -158,4 +158,6 @@ export interface BlockbusterState {
   toggleZoneEnabled: (id: string) => void;
   setDrawMode: (mode: DrawMode) => void;
   setZoneRiskType: (risk: RiskType) => void;
+  /** Switch the world's cyclone (the weather system) on or off; triggers a replan. */
+  toggleCyclone: () => void;
 }
