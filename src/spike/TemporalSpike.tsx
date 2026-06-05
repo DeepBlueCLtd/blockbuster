@@ -1,25 +1,22 @@
 /**
- * THROWAWAY SPIKE — does temporal risk read better as a 3D z-stack or as 2D
- * small multiples? (Stakeholder's "z-axis for temporal perspective" idea, plus
- * a side-by-side comparison.) A viewer, not a feature: no editing, no routes,
- * no Leaflet.
+ * THROWAWAY SPIKE — windowed temporal stack with a vertical time-wheel.
  *
- * Faithful, not faked:
- * - The permanent **base grid** is the terrain (non-temporal) risk — the live
- *   map's `selectCellCost` basis. In the stack it is a solid overhanging slab at
- *   the bottom; in the grid it is a labelled map on its own above the hours.
- * - The hourly grids default to the **temporal Δ** (storm + day/night only,
- *   diverging scale) so they show a different source from the terrain and look
- *   unlike it; a toggle switches them to the full per-hour risk. All values come
- *   from the real `selectDisplayProfile` pipeline.
+ * The data is sliced at a chosen interval (5 min … 3 h); a fixed **window of 24
+ * layers** centred on the current slice is shown, and the wheel scrolls the
+ * current time. Stack and Grid are two renderings of that same window; the wheel
+ * scrolls whichever is active. Only the window (+a small buffer) is built and
+ * cached — nothing computes all of the day's slices.
  *
- * One scene, two layouts. A `morph` value (0 = grid, 1 = stack) animates every
- * tile between its flat 6×4 slot and its stacked height, so toggling the layout
- * is a continuous transition rather than a cut.
+ * Faithful, not faked: the permanent **base** is the non-temporal terrain risk
+ * (the live map's selectCellCost basis), pinned beneath the stack. Each slice is
+ * coloured by the real `selectDisplayProfile` pipeline; by default it shows the
+ * **temporal Δ** (storm + day/night only) on a transparent background so the
+ * base shows through.
  *
  * Delete `src/spike/`, `temporal3d.html` and the extra `vite` input to remove.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -36,60 +33,44 @@ import type { CostParams, HexCell, RiskProfile, RiskType, WorldExtent, WorldPoin
 import { selectDisplayProfile, useBlockbusterStore } from '@/state/store';
 import { formatTime } from '@/ui/utils/time';
 
-const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const DAY_MIN = 1440;
+const WINDOW = 24; // layers shown at once (= the 6×4 grid)
+const BUFFER = 4; // extra slices kept cached either side of the window
+const INTERVAL_OPTIONS = [5, 15, 30, 60, 180] as const;
 
-// Stack: the permanent base reads as a foundation — a solid pedestal that
-// overhangs the temporal stack with a clear gap to hour 0.
 const BASE_OVERHANG = 1.08;
-const STACK_START = 2; // hour 0 sits this many `spacing` units above the base
+const STACK_START = 2; // window's bottom layer sits this many `spacing` units above the base
 const STACK_CAM: readonly [number, number, number] = [62, 48, 80];
 
-// Grid: 24 hourly maps as small multiples, with the permanent map above them.
 const GRID_COLS = 6;
 const GRID_ROWS = 4;
 const GRID_GAP = 6; // km between tiles
 const GRID_TILT = 0.25; // z-offset as a fraction of height — a gentle bird's-eye, off the gimbal
+const FIXED_CELL = GRID_COLS + 3; // where the current slice pins in "fixed cell" grid scroll
+
+const DELTA_FRAC = 0.4; // composite temporal Δ reaches full colour at this fraction of the base max
 
 type Layout = 'stack' | 'grid';
-
-/** What a risk cell is shaded by: the composite cost, or one channel's level. */
 type ShadeBy = 'composite' | RiskType;
-
-/**
- * What the hourly grids show:
- * - `temporal` — only the temporal contribution (storm + day/night), as a signed
- *   delta from the no-temporal baseline. Terrain and journey-speed cancel, so the
- *   hours look nothing like the permanent terrain map (the stakeholder's point).
- * - `total` — the full risk at that hour (terrain + temporal), like the live map.
- */
 type HourlyMode = 'temporal' | 'total';
+type GridScroll = 'fixed' | 'inplace';
 
 /** The slice of store state `selectDisplayProfile` needs, minus the time. */
 type ProfileInputs = Omit<Parameters<typeof selectDisplayProfile>[0], 'displayTime'>;
 
-interface Spotlight {
-  on: boolean;
-  hour: number;
-  showGhosts: boolean;
-}
-
-interface BuiltLayers {
-  /** Permanent (non-temporal) risk grid, drawn solid (no hex gaps). */
-  base: THREE.BufferGeometry;
-  /** One vertex-coloured grid per hour 0…23. */
-  hours: THREE.BufferGeometry[];
+interface WindowLayer {
+  index: number;
+  geometry: THREE.BufferGeometry;
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const clampN = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
 const smoothstep = (t: number) => {
-  const x = Math.min(1, Math.max(0, t));
+  const x = clampN(t, 0, 1);
   return x * x * (3 - 2 * x);
 };
 
-// Orthographic projection (no perspective) so the stacked maps line up when
-// viewed from above. The camera positions still frame each view; we convert the
-// framing distance to an ortho `zoom` that matches the apparent size a 45° fov
-// perspective camera would have shown at that distance.
+// Orthographic zoom matching a 45° fov perspective camera at the framing distance.
 const FOV = 45;
 const orthoZoom = (distance: number): number => {
   const h = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 900;
@@ -101,10 +82,10 @@ const gridCellH = (e: WorldExtent) => e.height + GRID_GAP;
 /** Z of the permanent map, centred just north of the hourly grid. */
 const baseRowZ = (e: WorldExtent) => -(GRID_ROWS / 2 + 0.5) * gridCellH(e);
 
-/** Flat 6×4 slot (X, Z) for hour `h`, centred on the origin. */
-function gridTileXZ(h: number, e: WorldExtent): readonly [number, number] {
-  const col = h % GRID_COLS;
-  const row = Math.floor(h / GRID_COLS);
+/** Flat 6×4 slot (X, Z) for grid `cell`, centred on the origin. */
+function gridTileXZ(cell: number, e: WorldExtent): readonly [number, number] {
+  const col = cell % GRID_COLS;
+  const row = Math.floor(cell / GRID_COLS);
   return [(col - (GRID_COLS - 1) / 2) * gridCellW(e), (row - (GRID_ROWS - 1) / 2) * gridCellH(e)];
 }
 
@@ -115,7 +96,7 @@ function gridFraming(e: WorldExtent): { height: number; targetZ: number } {
   const zSouth = ((GRID_ROWS - 1) / 2) * gridCellH(e) + e.height / 2;
   const targetZ = (zNorth + zSouth) / 2;
   const depth = zSouth - zNorth;
-  const vfov = (45 * Math.PI) / 180;
+  const vfov = (FOV * Math.PI) / 180;
   const aspect =
     typeof window !== 'undefined' && window.innerHeight > 0
       ? window.innerWidth / window.innerHeight
@@ -125,68 +106,49 @@ function gridFraming(e: WorldExtent): { height: number; targetZ: number } {
   return { height, targetZ };
 }
 
-/**
- * Mirror `ui/theme.heatColor` (green 120° → red 0° as risk rises) straight to a
- * GPU colour, skipping the CSS-string round-trip. Colour management is disabled
- * in `main.tsx` so this lands on screen matching the 2D map.
- */
+/** Mirror ui/theme.heatColor (green 120° → red 0°) straight to a GPU colour. */
 function heatThreeColor(t: number): THREE.Color {
   const hue = (1 - clamp01(t)) * 120;
   return new THREE.Color().setHSL(hue / 360, 0.72, 0.48);
 }
 
-// Temporal delta: the colour carries the sign (red adds risk, blue removes it)
-// and the magnitude rides on per-cell ALPHA — so a "no change" cell is fully
-// transparent and the non-temporal backdrop shows through, instead of a fill
-// that hides it from above.
+// Temporal Δ: colour carries the sign, magnitude rides on per-cell alpha so a
+// "no change" cell is transparent and the backdrop shows through.
 const TEMPORAL_POS = new THREE.Color(0.85, 0.1, 0.1);
 const TEMPORAL_NEG = new THREE.Color(0.1, 0.4, 0.85);
 const temporalColor = (t: number): THREE.Color => (t >= 0 ? TEMPORAL_POS : TEMPORAL_NEG);
 const temporalAlpha = (t: number): number => Math.min(1, Math.abs(t) ** 0.75);
 
-/** World (x, y) km → centred scene (X, Z); hours become the Y axis elsewhere. */
 function worldToXZ(p: WorldPoint, ext: WorldExtent): readonly [number, number] {
   return [p.x - ext.width / 2, -(p.y - ext.height / 2)];
 }
-
-/** Pull a hex vertex toward its centre so neighbouring cells show a gap. */
 function insetPoint(c: WorldPoint, v: WorldPoint, k: number): WorldPoint {
   return { x: c.x + (v.x - c.x) * k, y: c.y + (v.y - c.y) * k };
 }
 
-/**
- * The permanent, non-temporal risk for a cell — exactly the live map's
- * `selectCellCost` basis: terrain (base + overrides) folded with always-active
- * zone offsets. No journey speed, no day/night, no time-bounded/moving zones.
- */
+/** Permanent, non-temporal terrain risk (live map's selectCellCost basis). */
 function permanentProfile(inputs: ProfileInputs, cell: HexCell): RiskProfile | null {
   const rs = inputs.riskStates.get(cell.id);
   if (!rs) return null;
   return applyZoneOffsets(effectiveProfile(rs), inputs.zoneContribution.get(cell.id));
 }
-
-/**
- * The hour's non-temporal baseline for the delta: permanent terrain risk plus the
- * constant journey-speed modifier — i.e. `selectDisplayProfile` with the storm and
- * day/night switched off. Subtracting it from the full hour isolates the temporal
- * sources (terrain and speed cancel).
- */
+/** Baseline for the Δ: permanent risk + journey speed, no day/night, no storm. */
 function noTemporalProfile(inputs: ProfileInputs, cell: HexCell): RiskProfile | null {
   const base = permanentProfile(inputs, cell);
   if (!base) return null;
   return speedModifiedProfile(base, inputs.journeyParams.fixedSpeedKmh);
 }
 
-/** One flat, vertex-coloured grid (all cells fanned into triangles, in the X-Z plane). */
+/** One flat, vertex-coloured (RGBA) grid in the X-Z plane. */
 function makeGridGeometry(
   cells: readonly HexCell[],
   ext: WorldExtent,
   inset: number,
-  colorAt: (cellIndex: number) => THREE.Color,
-  alphaAt: (cellIndex: number) => number = () => 1,
+  colorAt: (ci: number) => THREE.Color,
+  alphaAt: (ci: number) => number = () => 1,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
-  const colors: number[] = []; // RGBA — per-cell alpha drives temporal transparency
+  const colors: number[] = [];
   for (let ci = 0; ci < cells.length; ci++) {
     const cell = cells[ci];
     if (!cell) continue;
@@ -212,31 +174,24 @@ function makeGridGeometry(
   return geo;
 }
 
-/**
- * Build the permanent base grid (drawn solid) plus one grid per hour (gapped).
- *
- * The permanent grid is the terrain (non-temporal) risk on a heat scale, anchored
- * to its own max — exactly the live map's `maxCost` (HexGridLayer). The hourly
- * grids are either the full risk (`total`, also heat) or, by default, the
- * **temporal delta** (`temporal`): each hour minus the no-temporal baseline, on a
- * diverging scale (red adds risk, blue removes it). The delta strips out terrain
- * and speed, so the hours show only the storm + day/night — a different source
- * from the permanent map, and visually unlike it.
- */
-function buildLayers(
+interface BaseInfo {
+  geometry: THREE.BufferGeometry;
+  baseNorm: number;
+  deltaRef: number;
+  metric: (p: RiskProfile) => number;
+}
+
+/** Permanent base geometry + the colour-scale references (lazy-friendly, no per-slice scan). */
+function buildBase(
   cells: readonly HexCell[],
   inputs: ProfileInputs,
   shadeBy: ShadeBy,
   costParams: CostParams,
-  inset: number,
-  hourlyMode: HourlyMode,
-): BuiltLayers {
+): BaseInfo {
   const n = cells.length;
   const isComposite = shadeBy === 'composite';
   const metric = (p: RiskProfile) => (isComposite ? cellRiskCost(p, costParams) : p[shadeBy]);
-
-  // Permanent terrain risk.
-  const baseVals = new Float32Array(n);
+  const vals = new Float32Array(n);
   let baseMax = 0;
   for (let ci = 0; ci < n; ci++) {
     const cell = cells[ci];
@@ -244,54 +199,56 @@ function buildLayers(
     const p = permanentProfile(inputs, cell);
     if (!p) continue;
     const v = metric(p);
-    baseVals[ci] = v;
+    vals[ci] = v;
     if (v > baseMax) baseMax = v;
   }
-  // Single channels are already 0…1; composite divides by the base max.
   const baseNorm = isComposite ? baseMax || 1 : 1;
-
-  // Hours: full risk, or the signed temporal delta from the no-temporal baseline.
-  const hourVals = new Float32Array(HOURS.length * n);
-  let maxAbsDelta = 1e-9;
-  for (const h of HOURS) {
-    const st = { ...inputs, displayTime: h * 60 };
-    for (let ci = 0; ci < n; ci++) {
-      const cell = cells[ci];
-      if (!cell) continue;
-      const full = selectDisplayProfile(st, cell.id, cell.vertices);
-      if (!full) continue;
-      if (hourlyMode === 'temporal') {
-        const baseline = noTemporalProfile(inputs, cell);
-        const d = baseline ? metric(full) - metric(baseline) : 0;
-        hourVals[h * n + ci] = d;
-        if (Math.abs(d) > maxAbsDelta) maxAbsDelta = Math.abs(d);
-      } else {
-        hourVals[h * n + ci] = metric(full);
-      }
-    }
-  }
-
-  const base = makeGridGeometry(cells, inputs.extent, 1, (ci) =>
-    heatThreeColor((baseVals[ci] ?? 0) / baseNorm),
-  );
-  const hours = HOURS.map((h) =>
-    hourlyMode === 'temporal'
-      ? makeGridGeometry(
-          cells,
-          inputs.extent,
-          inset,
-          (ci) => temporalColor((hourVals[h * n + ci] ?? 0) / maxAbsDelta),
-          (ci) => temporalAlpha((hourVals[h * n + ci] ?? 0) / maxAbsDelta),
-        )
-      : makeGridGeometry(cells, inputs.extent, inset, (ci) =>
-          heatThreeColor((hourVals[h * n + ci] ?? 0) / baseNorm),
-        ),
-  );
-  return { base, hours };
+  const deltaRef = isComposite ? (baseMax || 1) * DELTA_FRAC : 0.5;
+  const geometry = makeGridGeometry(cells, inputs.extent, 1, (ci) => heatThreeColor((vals[ci] ?? 0) / baseNorm));
+  return { geometry, baseNorm, deltaRef, metric };
 }
 
-/** A small canvas-texture label (e.g. "06:00", "Permanent") for the grid tiles. */
-function makeLabelTexture(text: string): THREE.CanvasTexture {
+/** One slice's geometry at `sliceMin` (temporal Δ or total risk). */
+function buildSlice(
+  cells: readonly HexCell[],
+  inputs: ProfileInputs,
+  sliceMin: number,
+  hourlyMode: HourlyMode,
+  inset: number,
+  info: BaseInfo,
+): THREE.BufferGeometry {
+  const n = cells.length;
+  const vals = new Float32Array(n);
+  const st = { ...inputs, displayTime: sliceMin };
+  for (let ci = 0; ci < n; ci++) {
+    const cell = cells[ci];
+    if (!cell) continue;
+    const full = selectDisplayProfile(st, cell.id, cell.vertices);
+    if (!full) continue;
+    if (hourlyMode === 'temporal') {
+      const baseline = noTemporalProfile(inputs, cell);
+      vals[ci] = baseline ? info.metric(full) - info.metric(baseline) : 0;
+    } else {
+      vals[ci] = info.metric(full);
+    }
+  }
+  if (hourlyMode === 'temporal') {
+    return makeGridGeometry(
+      cells,
+      inputs.extent,
+      inset,
+      (ci) => temporalColor((vals[ci] ?? 0) / info.deltaRef),
+      (ci) => temporalAlpha((vals[ci] ?? 0) / info.deltaRef),
+    );
+  }
+  return makeGridGeometry(cells, inputs.extent, inset, (ci) => heatThreeColor((vals[ci] ?? 0) / info.baseNorm));
+}
+
+/** Time-label textures, cached by the time string (limited set, no churn). */
+const labelCache = new Map<string, THREE.CanvasTexture>();
+function getLabel(text: string): THREE.CanvasTexture {
+  let tex = labelCache.get(text);
+  if (tex) return tex;
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 64;
@@ -303,8 +260,9 @@ function makeLabelTexture(text: string): THREE.CanvasTexture {
     ctx.textBaseline = 'middle';
     ctx.fillText(text, 128, 34);
   }
-  const tex = new THREE.CanvasTexture(canvas);
+  tex = new THREE.CanvasTexture(canvas);
   tex.anisotropy = 4;
+  labelCache.set(text, tex);
   return tex;
 }
 
@@ -344,9 +302,6 @@ function Orbit({
     return () => controls.dispose();
   }, [camera, gl]);
 
-  // Settle on the endpoint framing once a transition finishes (and on mount).
-  // Grid sets position + target (its framing is fixed); stack sets only the
-  // target so a user's orbit survives spacing tweaks.
   useEffect(() => {
     const controls = ref.current;
     if (!controls || transitioning) return;
@@ -363,8 +318,6 @@ function Orbit({
     const controls = ref.current;
     if (!controls) return;
     if (transitioning) {
-      // Capture the live pose once, then ease from it to the target framing — so
-      // a transition never jumps from a user-orbited angle.
       if (!animating.current) {
         fromPos.current.copy(camera.position);
         fromTarget.current.copy(controls.target);
@@ -401,7 +354,6 @@ function Orbit({
   return null;
 }
 
-/** Faint ground footprint + grid, fading in toward the stack. */
 function GroundPlane({ extent, opacity }: { extent: WorldExtent; opacity: number }) {
   return (
     <group position={[0, -1.5, 0]}>
@@ -414,33 +366,43 @@ function GroundPlane({ extent, opacity }: { extent: WorldExtent; opacity: number
   );
 }
 
-/** The whole scene, morphed between grid (morph 0) and stack (morph 1). */
+/** The whole scene, morphed between grid (0) and stack (1), windowed on the current slice. */
 function Scene({
+  base,
+  baseLabel,
   layers,
   extent,
   spacing,
-  everyN,
   opacity,
-  spotlight,
   temporal,
   showPermanent,
   showGround,
   morph,
-  labels,
-  baseLabel,
+  scrollCenter,
+  half,
+  currentSlice,
+  windowStart,
+  gridScroll,
+  intervalMin,
+  frameGeo,
 }: {
-  layers: BuiltLayers;
+  base: THREE.BufferGeometry;
+  baseLabel: THREE.Texture;
+  layers: WindowLayer[];
   extent: WorldExtent;
   spacing: number;
-  everyN: number;
   opacity: number;
-  spotlight: Spotlight;
   temporal: boolean;
   showPermanent: boolean;
   showGround: boolean;
   morph: number;
-  labels: (THREE.Texture | undefined)[];
-  baseLabel: THREE.Texture;
+  scrollCenter: number;
+  half: number;
+  currentSlice: number;
+  windowStart: number;
+  gridScroll: GridScroll;
+  intervalMin: number;
+  frameGeo: THREE.BufferGeometry;
 }) {
   const m = smoothstep(morph);
   const baseZ = lerp(baseRowZ(extent), 0, m);
@@ -449,10 +411,9 @@ function Scene({
     <group>
       {showGround && m > 0.15 && <GroundPlane extent={extent} opacity={0.85 * m} />}
 
-      {/* Permanent (non-temporal) map: above the grid (morph 0) → foundation slab (morph 1). */}
       {showPermanent && (
         <group position={[0, 0, baseZ]} scale={[baseScale, 1, baseScale]}>
-          <mesh geometry={layers.base}>
+          <mesh geometry={base}>
             <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
           </mesh>
           <sprite position={[0, 2, -extent.height / 2 - 6]} scale={[26, 5, 1]}>
@@ -461,24 +422,22 @@ function Scene({
         </group>
       )}
 
-      {layers.hours.map((geo, h) => {
-        const [gx, gz] = gridTileXZ(h, extent);
+      {layers.map(({ index, geometry }) => {
+        const isCurrent = index === currentSlice;
+        const cell = gridScroll === 'fixed' ? index - currentSlice + FIXED_CELL : index - windowStart;
+        const gridValid = cell >= 0 && cell < GRID_COLS * GRID_ROWS;
+        const [gx, gz] = gridValid ? gridTileXZ(cell, extent) : [0, 0];
+        const stackY = (STACK_START + (index - scrollCenter + half)) * spacing;
         const px = lerp(gx, 0, m);
-        const py = lerp(0, spacing * (STACK_START + h), m);
+        const py = lerp(0, stackY, m);
         const pz = lerp(gz, 0, m);
-        // Opacity morphs from a solid grid tile (1) to its stack value.
-        const decimated = h % everyN === 0;
-        let stackOp = opacity;
-        let stackVisible = decimated;
-        if (spotlight.on) {
-          if (h === spotlight.hour) stackOp = 1;
-          else stackVisible = decimated && spotlight.showGhosts;
-        }
-        if (!stackVisible) stackOp = 0;
-        const op = lerp(1, stackOp, m);
+        const stackOp = isCurrent ? 1 : opacity;
+        const gridOp = gridValid ? 1 : 0;
+        const op = lerp(gridOp, stackOp, m);
+        if (op <= 0.002 && !isCurrent) return null;
         return (
-          <group key={h} position={[px, py, pz]}>
-            <mesh geometry={geo}>
+          <group key={index} position={[px, py, pz]}>
+            <mesh geometry={geometry}>
               <meshBasicMaterial
                 vertexColors
                 transparent
@@ -487,13 +446,91 @@ function Scene({
                 depthWrite={!temporal && op >= 1}
               />
             </mesh>
+            {isCurrent && (
+              <lineLoop geometry={frameGeo}>
+                <lineBasicMaterial color="#cfe0f2" transparent opacity={0.85} depthTest={false} />
+              </lineLoop>
+            )}
             <sprite position={[0, 2, -extent.height / 2 - 2.2]} scale={[16, 4, 1]}>
-              <spriteMaterial map={labels[h] ?? null} transparent opacity={1 - m} depthTest={false} />
+              <spriteMaterial
+                map={getLabel(formatTime(index * intervalMin))}
+                transparent
+                opacity={(1 - m) * (gridValid ? 1 : 0)}
+                depthTest={false}
+              />
             </sprite>
           </group>
         );
       })}
     </group>
+  );
+}
+
+/** Vertical reel: drag ↕ or mouse-wheel to scroll the current time. */
+function TimeWheel({
+  currentMin,
+  setCurrentMin,
+  intervalMin,
+}: {
+  currentMin: number;
+  setCurrentMin: (m: number) => void;
+  intervalMin: number;
+}) {
+  const drag = useRef<{ y: number; min: number } | null>(null);
+  const maxMin = DAY_MIN - intervalMin;
+  const clampMin = (mn: number) => clampN(mn, 0, maxMin);
+  const PX = 44; // pixels per slice while dragging
+  const onDown = (e: ReactPointerEvent) => {
+    drag.current = { y: e.clientY, min: currentMin };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onMove = (e: ReactPointerEvent) => {
+    if (!drag.current) return;
+    const dy = e.clientY - drag.current.y;
+    setCurrentMin(clampMin(drag.current.min - (dy / PX) * intervalMin));
+  };
+  const onUp = () => {
+    if (drag.current) {
+      setCurrentMin(clampMin(Math.round(currentMin / intervalMin) * intervalMin));
+      drag.current = null;
+    }
+  };
+  const onWheel = (e: ReactWheelEvent) => {
+    setCurrentMin(clampMin(currentMin + Math.sign(e.deltaY) * intervalMin));
+  };
+
+  const cur = Math.round(currentMin / intervalMin);
+  const ticks: { idx: number; y: number; label: string; current: boolean }[] = [];
+  for (let d = -3; d <= 3; d++) {
+    const idx = cur + d;
+    const mn = idx * intervalMin;
+    if (mn < 0 || mn > maxMin) continue;
+    ticks.push({ idx, y: (idx - currentMin / intervalMin) * PX, label: formatTime(mn), current: d === 0 });
+  }
+  return (
+    <div className="spike-wheel">
+      <div className="spike-wheel-cap">TIME — drag ↕ / scroll</div>
+      <div
+        className="spike-wheel-reel"
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        onWheel={onWheel}
+      >
+        <div className="spike-wheel-band" />
+        {ticks.map((t) => (
+          <div
+            key={t.idx}
+            className={t.current ? 'spike-wheel-tick now' : 'spike-wheel-tick'}
+            style={{ transform: `translateY(calc(-50% + ${t.y}px))`, opacity: Math.max(0, 1 - Math.abs(t.y) / 120) }}
+          >
+            {t.label}
+          </div>
+        ))}
+      </div>
+      <div className="spike-wheel-hint">scrolls Stack &amp; Grid alike</div>
+    </div>
   );
 }
 
@@ -510,18 +547,17 @@ export function TemporalSpike() {
   const terrain = useBlockbusterStore((s) => s.terrain);
 
   const [layout, setLayout] = useState<Layout>('stack');
+  const [intervalMin, setIntervalMin] = useState(15);
+  const [currentMin, setCurrentMin] = useState(12 * 60);
+  const [gridScroll, setGridScroll] = useState<GridScroll>('fixed');
   const [spacing, setSpacing] = useState(2.5);
   const [opacity, setOpacity] = useState(0.5);
-  const [everyN, setEveryN] = useState(1);
   const [shadeBy, setShadeBy] = useState<ShadeBy>('composite');
   const [hourlyMode, setHourlyMode] = useState<HourlyMode>('temporal');
   const [inset, setInset] = useState(0.9);
   const [showPermanent, setShowPermanent] = useState(true);
   const [showGround, setShowGround] = useState(true);
   const [autoRotate, setAutoRotate] = useState(false);
-  const [spotOn, setSpotOn] = useState(true);
-  const [spotHour, setSpotHour] = useState(12);
-  const [showGhosts, setShowGhosts] = useState(true);
 
   // Layout morph: 0 = grid, 1 = stack, animated on toggle.
   const [morph, setMorph] = useState(1);
@@ -547,83 +583,121 @@ export function TemporalSpike() {
     return () => cancelAnimationFrame(raf);
   }, [layout]);
 
+  // Snap the current time onto the grid when the interval changes.
+  useEffect(() => {
+    setCurrentMin((m) => clampN(Math.round(m / intervalMin) * intervalMin, 0, DAY_MIN - intervalMin));
+  }, [intervalMin]);
+
   const cells = grid?.cells;
 
-  const layers = useMemo(() => {
+  const inputs = useMemo<ProfileInputs | null>(() => {
     if (!cells) return null;
-    const inputs: ProfileInputs = {
-      riskStates,
-      zoneContribution,
-      zones,
-      dayNight,
-      journeyParams,
-      extent,
-      hexSize,
-      terrain,
+    return { riskStates, zoneContribution, zones, dayNight, journeyParams, extent, hexSize, terrain };
+  }, [cells, riskStates, zoneContribution, zones, dayNight, journeyParams, extent, hexSize, terrain]);
+
+  const baseInfo = useMemo(
+    () => (cells && inputs ? buildBase(cells, inputs, shadeBy, costParams) : null),
+    [cells, inputs, shadeBy, costParams],
+  );
+  useEffect(() => () => baseInfo?.geometry.dispose(), [baseInfo]);
+
+  // Windowed slice maths.
+  const totalSlices = Math.round(DAY_MIN / intervalMin);
+  const windowEff = Math.min(WINDOW, totalSlices);
+  const half = (windowEff - 1) / 2;
+  const scrollPos = clampN(currentMin / intervalMin, 0, totalSlices - 1);
+  const scrollCenter = clampN(scrollPos, half, Math.max(half, totalSlices - 1 - half));
+  const currentSlice = clampN(Math.round(scrollPos), 0, totalSlices - 1);
+  const windowStart = clampN(
+    currentSlice - Math.floor(windowEff / 2),
+    0,
+    Math.max(0, totalSlices - windowEff),
+  );
+
+  // Lazy geometry cache: a fresh Map per build-key; disposed when the key changes.
+  // A fresh geometry cache whenever anything affecting a slice's geometry changes;
+  // the deps are intentional invalidation keys (not used in the factory body).
+  const cache = useMemo(
+    () => new Map<number, THREE.BufferGeometry>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseInfo, hourlyMode, inset, intervalMin],
+  );
+  useEffect(() => {
+    const m = cache;
+    return () => {
+      for (const g of m.values()) g.dispose();
+      m.clear();
     };
-    return buildLayers(cells, inputs, shadeBy, costParams, inset, hourlyMode);
-  }, [
-    cells,
-    riskStates,
-    zoneContribution,
-    zones,
-    dayNight,
-    journeyParams,
-    extent,
-    hexSize,
-    terrain,
-    shadeBy,
-    costParams,
-    inset,
-    hourlyMode,
-  ]);
+  }, [cache]);
 
-  useEffect(
-    () => () => {
-      if (!layers) return;
-      layers.base.dispose();
-      layers.hours.forEach((g) => g.dispose());
-    },
-    [layers],
-  );
+  const windowLayers = useMemo<WindowLayer[]>(() => {
+    if (!cells || !inputs || !baseInfo) return [];
+    const out: WindowLayer[] = [];
+    for (let j = 0; j < windowEff; j++) {
+      const index = windowStart + j;
+      let geometry = cache.get(index);
+      if (!geometry) {
+        geometry = buildSlice(cells, inputs, index * intervalMin, hourlyMode, inset, baseInfo);
+        cache.set(index, geometry);
+      }
+      out.push({ index, geometry });
+    }
+    return out;
+  }, [cache, windowStart, windowEff, cells, inputs, baseInfo, hourlyMode, inset, intervalMin]);
 
-  const labels = useMemo(() => HOURS.map((h) => makeLabelTexture(formatTime(h * 60))), []);
-  const baseLabel = useMemo(() => makeLabelTexture('Permanent'), []);
-  useEffect(
-    () => () => {
-      labels.forEach((t) => t.dispose());
-      baseLabel.dispose();
-    },
-    [labels, baseLabel],
-  );
+  // Drop slices that scrolled well outside the window.
+  useEffect(() => {
+    for (const [i, g] of cache) {
+      if (i < windowStart - BUFFER || i >= windowStart + windowEff + BUFFER) {
+        g.dispose();
+        cache.delete(i);
+      }
+    }
+  }, [cache, windowStart, windowEff]);
+
+  const baseLabel = useMemo(() => getLabel('Permanent'), []);
+  const frameGeo = useMemo(() => {
+    const w = extent.width / 2;
+    const h = extent.height / 2;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([-w, 0.2, -h, w, 0.2, -h, w, 0.2, h, -w, 0.2, h], 3),
+    );
+    return g;
+  }, [extent]);
+  useEffect(() => () => frameGeo.dispose(), [frameGeo]);
 
   const framing = useMemo(() => gridFraming(extent), [extent]);
-
-  if (!grid || !cells || !layers) return <div className="spike-loading">Building world…</div>;
-
-  const spotlight: Spotlight = { on: spotOn, hour: spotHour, showGhosts };
-  const stackTargetY = spacing * (STACK_START + HOURS.length - 1) * 0.5;
+  const stackTargetY = (STACK_START + half) * spacing;
   const initialZoom = orthoZoom(
     Math.hypot(STACK_CAM[0], STACK_CAM[1] - stackTargetY, STACK_CAM[2]),
   );
+
+  if (!grid || !cells || !baseInfo) return <div className="spike-loading">Building world…</div>;
 
   return (
     <div className="spike-root">
       <Canvas orthographic camera={{ position: [62, 48, 80], zoom: initialZoom, near: 0.1, far: 4000 }}>
         <color attach="background" args={['#0b0e14']} />
         <Scene
-          layers={layers}
+          base={baseInfo.geometry}
+          baseLabel={baseLabel}
+          layers={windowLayers}
           extent={extent}
           spacing={spacing}
-          everyN={everyN}
           opacity={opacity}
-          spotlight={spotlight}
           temporal={hourlyMode === 'temporal'}
           showPermanent={showPermanent}
           showGround={showGround}
           morph={morph}
-          labels={labels}
-          baseLabel={baseLabel}
+          scrollCenter={scrollCenter}
+          half={half}
+          currentSlice={currentSlice}
+          windowStart={windowStart}
+          gridScroll={gridScroll}
+          intervalMin={intervalMin}
+          frameGeo={frameGeo}
         />
         <Orbit
           layout={layout}
@@ -641,42 +715,73 @@ export function TemporalSpike() {
       </a>
 
       <div className="spike-panel">
-        <h1>Temporal risk — spike</h1>
+        <h1>Temporal risk — windowed</h1>
         <p className="sub">
-          {cells.length} cells · 24 hours (00:00 → 23:00). Toggle Layout to morph between the 3D
-          stack and 2D small multiples.
+          {cells.length} cells · {totalSlices} slices · {windowEff}-layer window · the wheel scrolls
+          Stack or Grid
         </p>
 
         <div className="spike-row">
           <span className="spike-lbl">Layout</span>
           <div className="spike-seg">
-            <button
-              type="button"
-              className={layout === 'stack' ? 'on' : ''}
-              onClick={() => setLayout('stack')}
-            >
+            <button type="button" className={layout === 'stack' ? 'on' : ''} onClick={() => setLayout('stack')}>
               Stack 3D
             </button>
-            <button
-              type="button"
-              className={layout === 'grid' ? 'on' : ''}
-              onClick={() => setLayout('grid')}
-            >
+            <button type="button" className={layout === 'grid' ? 'on' : ''} onClick={() => setLayout('grid')}>
               Grid 6×4
             </button>
           </div>
         </div>
 
         <div className="spike-row">
-          <label htmlFor="hours">Hours show</label>
-          <select
-            id="hours"
-            value={hourlyMode}
-            onChange={(e) => setHourlyMode(e.target.value as HourlyMode)}
-          >
-            <option value="temporal">Temporal Δ</option>
-            <option value="total">Total risk</option>
+          <label htmlFor="interval">Interval</label>
+          <select id="interval" value={intervalMin} onChange={(e) => setIntervalMin(Number(e.target.value))}>
+            {INTERVAL_OPTIONS.map((iv) => (
+              <option key={iv} value={iv}>
+                {iv < 60 ? `${iv} min` : `${iv / 60} h`}
+              </option>
+            ))}
           </select>
+        </div>
+
+        <div className="spike-row">
+          <span className="spike-lbl">Hours show</span>
+          <div className="spike-seg">
+            <button
+              type="button"
+              className={hourlyMode === 'temporal' ? 'on' : ''}
+              onClick={() => setHourlyMode('temporal')}
+            >
+              Temporal Δ
+            </button>
+            <button
+              type="button"
+              className={hourlyMode === 'total' ? 'on' : ''}
+              onClick={() => setHourlyMode('total')}
+            >
+              Total
+            </button>
+          </div>
+        </div>
+
+        <div className="spike-row">
+          <span className="spike-lbl">Grid scroll</span>
+          <div className="spike-seg">
+            <button
+              type="button"
+              className={gridScroll === 'fixed' ? 'on' : ''}
+              onClick={() => setGridScroll('fixed')}
+            >
+              Fixed cell
+            </button>
+            <button
+              type="button"
+              className={gridScroll === 'inplace' ? 'on' : ''}
+              onClick={() => setGridScroll('inplace')}
+            >
+              In place
+            </button>
+          </div>
         </div>
 
         <div className="spike-row">
@@ -689,6 +794,34 @@ export function TemporalSpike() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="spike-row">
+          <label htmlFor="spacing">Layer gap</label>
+          <input
+            id="spacing"
+            type="range"
+            min={0.5}
+            max={6}
+            step={0.1}
+            value={spacing}
+            onChange={(e) => setSpacing(Number(e.target.value))}
+          />
+          <span className="spike-val">{spacing.toFixed(1)}</span>
+        </div>
+
+        <div className="spike-row">
+          <label htmlFor="opacity">Opacity</label>
+          <input
+            id="opacity"
+            type="range"
+            min={0.05}
+            max={1}
+            step={0.05}
+            value={opacity}
+            onChange={(e) => setOpacity(Number(e.target.value))}
+          />
+          <span className="spike-val">{opacity.toFixed(2)}</span>
         </div>
 
         <div className="spike-row">
@@ -706,7 +839,7 @@ export function TemporalSpike() {
         </div>
 
         <div className="spike-row">
-          <label htmlFor="permanent">Permanent risk grid</label>
+          <label htmlFor="permanent">Permanent base</label>
           <input
             id="permanent"
             type="checkbox"
@@ -715,128 +848,33 @@ export function TemporalSpike() {
           />
         </div>
 
-        {layout === 'stack' && (
-          <>
-            <div className="spike-row">
-              <label htmlFor="spacing">Layer gap</label>
-              <input
-                id="spacing"
-                type="range"
-                min={0.5}
-                max={6}
-                step={0.1}
-                value={spacing}
-                onChange={(e) => setSpacing(Number(e.target.value))}
-              />
-              <span className="spike-val">{spacing.toFixed(1)}</span>
-            </div>
+        <div className="spike-row">
+          <label htmlFor="ground">Ground plane</label>
+          <input
+            id="ground"
+            type="checkbox"
+            checked={showGround}
+            onChange={(e) => setShowGround(e.target.checked)}
+          />
+        </div>
 
-            <div className="spike-row">
-              <label htmlFor="opacity">Opacity</label>
-              <input
-                id="opacity"
-                type="range"
-                min={0.05}
-                max={1}
-                step={0.05}
-                value={opacity}
-                onChange={(e) => setOpacity(Number(e.target.value))}
-              />
-              <span className="spike-val">{opacity.toFixed(2)}</span>
-            </div>
-
-            <div className="spike-row">
-              <label htmlFor="everyN">Show every</label>
-              <select
-                id="everyN"
-                value={everyN}
-                onChange={(e) => setEveryN(Number(e.target.value))}
-              >
-                <option value={1}>every hour</option>
-                <option value={2}>every 2nd</option>
-                <option value={3}>every 3rd</option>
-                <option value={4}>every 4th</option>
-                <option value={6}>every 6th</option>
-              </select>
-            </div>
-
-            <div className="spike-row">
-              <label htmlFor="spotOn">Spotlight one hour</label>
-              <input
-                id="spotOn"
-                type="checkbox"
-                checked={spotOn}
-                onChange={(e) => setSpotOn(e.target.checked)}
-              />
-            </div>
-
-            {spotOn && (
-              <>
-                <div className="spike-row">
-                  <label htmlFor="spotHour">Hour</label>
-                  <input
-                    id="spotHour"
-                    type="range"
-                    min={0}
-                    max={23}
-                    step={1}
-                    value={spotHour}
-                    onChange={(e) => setSpotHour(Number(e.target.value))}
-                  />
-                  <span className="spike-val">{formatTime(spotHour * 60)}</span>
-                </div>
-                <div className="spike-row">
-                  <label htmlFor="ghosts">Keep others (at Opacity)</label>
-                  <input
-                    id="ghosts"
-                    type="checkbox"
-                    checked={showGhosts}
-                    onChange={(e) => setShowGhosts(e.target.checked)}
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="spike-row">
-              <label htmlFor="ground">Ground plane</label>
-              <input
-                id="ground"
-                type="checkbox"
-                checked={showGround}
-                onChange={(e) => setShowGround(e.target.checked)}
-              />
-            </div>
-
-            <div className="spike-row">
-              <label htmlFor="rotate">Auto-rotate</label>
-              <input
-                id="rotate"
-                type="checkbox"
-                checked={autoRotate}
-                onChange={(e) => setAutoRotate(e.target.checked)}
-              />
-            </div>
-          </>
-        )}
+        <div className="spike-row">
+          <label htmlFor="rotate">Auto-rotate</label>
+          <input
+            id="rotate"
+            type="checkbox"
+            checked={autoRotate}
+            onChange={(e) => setAutoRotate(e.target.checked)}
+          />
+        </div>
 
         <p className="spike-note">
-          {layout === 'stack'
-            ? 'Solid slab at the bottom = permanent terrain risk; the 24 grids above are the hourly layers.'
-            : 'Permanent terrain map on top; the 24 hourly maps below it (00:00 → 23:00).'}{' '}
-          {hourlyMode === 'temporal' ? (
-            <>
-              Hours show the temporal <em>Δ</em> only (storm + day/night): red adds risk, blue
-              removes it, pale = no change — so they look nothing like the terrain map.
-            </>
-          ) : (
-            <>Hours show the full risk (terrain + temporal) on the same heat scale as the terrain map.</>
-          )}
-        </p>
-        <p className="spike-note">
-          Seeded: a storm sweeps E→W 08:00–16:00 (raises <em>cold</em>); day/night shifts{' '}
-          <em>animals</em> &amp; <em>humans</em>.
+          Only the {windowEff}-layer window (+buffer) is computed &amp; cached; slices build on the
+          fly as you scroll. Permanent base anchors the colour scale and sits beneath the stack.
         </p>
       </div>
+
+      <TimeWheel currentMin={currentMin} setCurrentMin={setCurrentMin} intervalMin={intervalMin} />
     </div>
   );
 }
