@@ -142,5 +142,5 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
-# 3D temporal spike — throwaway Playwright screenshot output
-spike-*.png
+# 3D temporal view — Playwright screenshot output (dev helper)
+temporal-*.png

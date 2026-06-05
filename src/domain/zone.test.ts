@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { WorldPoint } from './world';
 import type { RiskZone } from './zone';
-import { zoneOffsetsForCell } from './zone';
+import { createStormBand, zoneOffsetsForCell } from './zone';
 import { applyZoneOffsets, uniformProfile } from './risk';
 
 // A square "cell" of area 4 standing in for a hex.
@@ -63,5 +63,50 @@ describe('zone scoring', () => {
     expect(applyZoneOffsets(p, { human: -0.95 }).human).toBe(0); // 0.8 − 0.95 → clamp 0
     expect(applyZoneOffsets(p, { human: -0.3 }).human).toBeCloseTo(0.5, 6);
     expect(applyZoneOffsets(p, undefined)).toBe(p); // untouched, same reference
+  });
+});
+
+describe('createStormBand', () => {
+  it('builds an enabled cold linear-sweep band with the standard defaults', () => {
+    const z = createStormBand(50, { id: 'x' });
+    expect(z.id).toBe('x');
+    expect(z.name).toBe('Storm band');
+    expect(z.risk).toBe('cold');
+    expect(z.kind).toBe('polygon');
+    expect(z.enabled).toBe(true);
+    expect(z.offset).toBeCloseTo(0.3, 6);
+    expect(z.startTime).toBe(8 * 60);
+    expect(z.endTime).toBe(16 * 60);
+    // Sweeps east (world width) → west (0), so the temporal view has motion.
+    expect(z.motion).toEqual({
+      type: 'linear-sweep',
+      fromX: 50,
+      toX: 0,
+      bandCells: 5,
+      slantLeft: true,
+    });
+  });
+
+  it('honours overrides for the panel-driven storm', () => {
+    const z = createStormBand(30, {
+      id: 'y',
+      name: 'Front',
+      offset: 0.45,
+      startTime: 60,
+      endTime: 120,
+      bandCells: 3,
+      slantLeft: false,
+    });
+    expect(z.name).toBe('Front');
+    expect(z.offset).toBeCloseTo(0.45, 6);
+    expect(z.startTime).toBe(60);
+    expect(z.endTime).toBe(120);
+    expect(z.motion).toEqual({
+      type: 'linear-sweep',
+      fromX: 30,
+      toX: 0,
+      bandCells: 3,
+      slantLeft: false,
+    });
   });
 });

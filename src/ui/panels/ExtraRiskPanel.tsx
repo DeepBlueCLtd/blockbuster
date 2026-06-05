@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RISK_LABELS, RISK_TYPES, ZONE_OFFSET_MAX, ZONE_OFFSET_MIN } from '@domain';
+import { createStormBand, RISK_LABELS, RISK_TYPES, ZONE_OFFSET_MAX, ZONE_OFFSET_MIN } from '@domain';
 import type { RiskType } from '@domain';
 import { useBlockbusterStore } from '@/state/store';
 import type { DrawMode } from '@/state/types';
@@ -287,24 +287,15 @@ export function ExtraRiskPanel() {
             <button
               type="button"
               onClick={() => {
-                addZone({
-                  id: crypto.randomUUID(),
-                  name: 'Storm band',
-                  risk: 'cold' as RiskType,
-                  kind: 'polygon',
-                  ring: [],
-                  offset: stormIntensity,
-                  enabled: true,
-                  startTime: stormStart,
-                  endTime: stormEnd,
-                  motion: {
-                    type: 'linear-sweep',
-                    fromX: extent.width,
-                    toX: 0,
-                    bandCells: 5,
+                addZone(
+                  createStormBand(extent.width, {
+                    id: crypto.randomUUID(),
+                    offset: stormIntensity,
+                    startTime: stormStart,
+                    endTime: stormEnd,
                     slantLeft: stormSlantLeft,
-                  },
-                });
+                  }),
+                );
                 setShowStorm(false);
               }}
             >
