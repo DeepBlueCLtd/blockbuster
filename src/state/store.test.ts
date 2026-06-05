@@ -165,6 +165,28 @@ describe('store — hex-size decoupling', () => {
     }
   });
 
+  it('reuses the terrain field on a hex-size change so the base map is not re-rasterised', () => {
+    vi.useFakeTimers();
+    try {
+      const store = createBlockbusterStore(createMockEngine());
+      store.getState().regenerate(1);
+      const field = store.getState().field;
+      expect(field).not.toBeNull();
+
+      // A hex-size change rebuilds the grid but keeps the same field object, so
+      // TerrainLayer's cached raster stays valid — no expensive re-rasterise.
+      store.getState().setHexSize(4);
+      vi.advanceTimersByTime(200);
+      expect(store.getState().field).toBe(field);
+
+      // A new seed is a new world, so the field (and its raster) is rebuilt.
+      store.getState().regenerate(2);
+      expect(store.getState().field).not.toBe(field);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('coalesces rapid slider changes into a single rebuild at the final size', () => {
     vi.useFakeTimers();
     try {

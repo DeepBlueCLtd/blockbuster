@@ -145,7 +145,14 @@ export function createBlockbusterStore(engine: Engine) {
           orientation: 'pointy',
           size: s.hexSize,
         });
-        const field = engine.mapGenerator.generate({ extent: s.extent, seed: useSeed });
+        // The terrain field depends only on seed + extent, never on hex size, so
+        // reuse the existing one when neither changed. This keeps TerrainLayer's
+        // cached base-map raster valid: a hex-size change must not trigger a full,
+        // main-thread re-rasterise (~96k samples + PNG encode) of an unchanged world.
+        const field =
+          s.field && s.field.seed === useSeed && s.field.extent === s.extent
+            ? s.field
+            : engine.mapGenerator.generate({ extent: s.extent, seed: useSeed });
         const terrain = engine.gridBuilder.sampleTerrain(grid, field);
         const riskStates = new Map<CellId, CellRiskState>();
         for (const cell of grid.cells) {
