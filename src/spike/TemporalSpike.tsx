@@ -20,10 +20,10 @@ import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { MapContainer } from 'react-leaflet';
-import { CRS } from 'leaflet';
+import { MapContainer, useMap } from 'react-leaflet';
+import { CRS, imageOverlay } from 'leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
-import { TerrainLayer } from '@/ui/map/TerrainLayer';
+import type { TerrainRasterRequest } from './terrainRaster.worker';
 import {
   applyZoneOffsets,
   cellRiskCost,
@@ -412,12 +412,33 @@ function GroundPlane({ extent, opacity }: { extent: WorldExtent; opacity: number
   );
 }
 
+/** Adds the worker-rendered terrain image as a Leaflet overlay (no main-thread
+ *  rasterisation); (re)adds it whenever the URL arrives or changes. */
+function SpikeTerrainOverlay({ url, extent }: { url: string | null; extent: WorldExtent }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!url) return;
+    const bounds: LatLngBoundsExpression = [
+      [0, 0],
+      [extent.height, extent.width],
+    ];
+    const overlay = imageOverlay(url, bounds, { interactive: false });
+    overlay.addTo(map);
+    return () => {
+      overlay.remove();
+    };
+  }, [map, url, extent]);
+  return null;
+}
+
 /**
- * SPIKE: the live app Leaflet map (terrain), reused as the "permanent base"
- * stand-in to de-risk combining the 2D control with the 3D stack. View-only —
- * interactions are disabled and it sits behind a transparent canvas.
+ * SPIKE: the live app Leaflet map, reused as the "permanent base" stand-in to
+ * de-risk combining the 2D control with the 3D stack. Its terrain image is
+ * generated off the main thread (see terrainRaster.worker) so revealing it
+ * never blocks the UI. View-only — interactions are off and it sits behind a
+ * transparent canvas.
  */
-function SpikeLeafletMap({ extent }: { extent: WorldExtent }) {
+function SpikeLeafletMap({ extent, terrainUrl }: { extent: WorldExtent; terrainUrl: string | null }) {
   const bounds: LatLngBoundsExpression = [
     [0, 0],
     [extent.height, extent.width],
@@ -434,7 +455,7 @@ function SpikeLeafletMap({ extent }: { extent: WorldExtent }) {
       doubleClickZoom={false}
       keyboard={false}
     >
-      <TerrainLayer />
+      <SpikeTerrainOverlay url={terrainUrl} extent={extent} />
     </MapContainer>
   );
 }
@@ -884,6 +905,7 @@ export function TemporalSpike() {
   const costParams = useBlockbusterStore((s) => s.costParams);
   const terrain = useBlockbusterStore((s) => s.terrain);
   const plan = useBlockbusterStore((s) => s.plan);
+  const seed = useBlockbusterStore((s) => s.seed);
 
   const [layout, setLayout] = useState<Layout>('stack');
   const [intervalMin, setIntervalMin] = useState(15);
@@ -913,6 +935,31 @@ export function TemporalSpike() {
   useEffect(() => {
     if (!showPermanent) setMapMounted(true);
   }, [showPermanent]);
+
+  // Generate the permanent terrain raster off the main thread at app open, so
+  // the heavy per-pixel field sampling never blocks the UI — the Leaflet base
+  // just receives a ready image when the worker finishes.
+  const [terrainUrl, setTerrainUrl] = useState<string | null>(null);
+  const terrainUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    const worker = new Worker(new URL('./terrainRaster.worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    worker.onmessage = (e: MessageEvent<Blob>) => {
+      if (terrainUrlRef.current) URL.revokeObjectURL(terrainUrlRef.current);
+      const url = URL.createObjectURL(e.data);
+      terrainUrlRef.current = url;
+      setTerrainUrl(url);
+    };
+    worker.postMessage({ extent, seed } satisfies TerrainRasterRequest);
+    return () => {
+      worker.terminate();
+      if (terrainUrlRef.current) {
+        URL.revokeObjectURL(terrainUrlRef.current);
+        terrainUrlRef.current = null;
+      }
+    };
+  }, [extent, seed]);
 
   // Layout morph: 0 = grid, 1 = stack, animated on toggle.
   const [morph, setMorph] = useState(1);
@@ -1074,7 +1121,7 @@ export function TemporalSpike() {
             ref={mapQuadRef}
             style={{ width: MAP_W, height: mapH, opacity: 0 }}
           >
-            <SpikeLeafletMap extent={extent} />
+            <SpikeLeafletMap extent={extent} terrainUrl={terrainUrl} />
           </div>
         </div>
       )}
