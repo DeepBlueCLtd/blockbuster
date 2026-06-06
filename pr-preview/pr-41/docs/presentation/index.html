@@ -680,10 +680,11 @@
             <button id="s4Replay" class="kbd" style="cursor: pointer; font-size: 1em">↺ replay</button>
           </p>
           <aside class="notes">
-            The Speed &amp; consistency hero (supporting). The shaded cells are paths the search
-            considered; it floods outward then snaps to the cheapest line. Contrast with hours of
-            manual map-reading, and stress determinism: identical inputs always reproduce the
-            identical plan — vital for audit and for trusting it. Fills the Speed badge.
+            The Speed &amp; consistency hero (supporting). The amber line is the route the search
+            is weighing at that moment; lightly-shaded cells are options already considered. It
+            tries many candidate routes, then snaps to the cheapest (white). Contrast with hours
+            of manual map-reading, and stress determinism: identical inputs always reproduce the
+            identical plan. Fills the Speed badge.
           </aside>
         </section>
 
@@ -1070,7 +1071,7 @@
             }
             path.reverse();
           }
-          return { path, order };
+          return { path, order, came };
         }
 
         // total risk cost of a whole route (honest: at the given appetite)
@@ -1168,7 +1169,6 @@
          * ================================================================= */
         const Widgets = {};
         const def = (id, w) => (Widgets[id] = w);
-        let rafCancel = null;
 
         // ── S1 (slide 3): "many roads" + a speed⇄safety morph ──
         def('s-challenge', (function () {
@@ -1439,44 +1439,69 @@
           };
         })());
 
-        // ── S4 (slide 7): search floods, then snaps to the cheapest ──
+        // ── S4 (slide 7): the search weighs candidate routes, then snaps to the cheapest ──
         def('s-speed', (function () {
-          let canvas, ctx, statEl, replay, ox, oy, plan;
+          let canvas, ctx, statEl, replay, ox, oy, plan, timer;
           const SIZE = 18;
-          function frameDraw(shown) {
+          // reconstruct START → this cell via the (final, stable) came map, so we
+          // can draw the partial route the search is weighing at each step
+          function pathTo(cr) {
+            const path = [];
+            let k = key(cr[0], cr[1]);
+            const startK = key(START.col, START.row);
+            for (let guard = 0; guard < 2000; guard++) {
+              const [c, r] = fromKey(k);
+              path.push({ col: c, row: r });
+              if (k === startK) break;
+              const p = plan.came.get(k);
+              if (p === undefined) break;
+              k = p;
+            }
+            return path.reverse();
+          }
+          function frameDraw(i, done) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawField(ctx, ox, oy, SIZE);
-            for (let i = 0; i < shown && i < plan.order.length; i++) {
-              const [c, r] = plan.order[i];
+            // cells already considered — lightly, so the route stays legible
+            for (let j = 0; j <= i && j < plan.order.length; j++) {
+              const [c, r] = plan.order[j];
               const [x, y] = center(c, r, ox, oy, SIZE);
               hexPath(ctx, x, y, SIZE);
-              ctx.fillStyle = 'rgba(15,52,96,0.45)';
+              ctx.fillStyle = 'rgba(15,52,96,0.20)';
               ctx.fill();
             }
-            if (shown >= plan.order.length) strokeRoute(ctx, plan.path, ox, oy, SIZE, '#fff', 4);
+            if (done) {
+              strokeRoute(ctx, plan.path, ox, oy, SIZE, '#fff', 4);
+            } else if (i >= 0 && i < plan.order.length) {
+              // the candidate route under consideration this step (amber)
+              strokeRoute(ctx, pathTo(plan.order[i]), ox, oy, SIZE, '#f39c12', 3);
+              const [cx, cy] = center(plan.order[i][0], plan.order[i][1], ox, oy, SIZE);
+              hexPath(ctx, cx, cy, SIZE);
+              ctx.lineWidth = 3;
+              ctx.strokeStyle = '#e67e22';
+              ctx.stroke();
+            }
             marker(ctx, START, ox, oy, SIZE, '#27ae60', 'A');
             marker(ctx, GOAL, ox, oy, SIZE, '#c0392b', 'B');
           }
           function run() {
-            if (rafCancel) {
-              cancelAnimationFrame(rafCancel);
-              rafCancel = null;
-            }
-            let shown = 0;
+            clearInterval(timer);
             const total = plan.order.length;
-            statEl.textContent = 'explored 0 paths';
-            const tick = () => {
-              shown += 3;
-              statEl.innerHTML = 'explored <b>' + Math.min(shown, total) + '</b> of ' + total + ' cells';
-              frameDraw(shown);
-              if (shown < total) {
-                rafCancel = requestAnimationFrame(tick);
-              } else {
-                statEl.innerHTML = 'cheapest route found in <b>' + total + '</b> expansions';
-                rafCancel = null;
+            const delay = Math.max(55, Math.min(140, Math.round(5200 / total)));
+            let i = 0;
+            frameDraw(0, false);
+            statEl.innerHTML = 'weighing routes… considered <b>1</b> of ' + total;
+            timer = setInterval(() => {
+              i++;
+              if (i >= total) {
+                clearInterval(timer);
+                frameDraw(total - 1, true);
+                statEl.innerHTML = 'cheapest route found after weighing <b>' + total + '</b> options';
+                return;
               }
-            };
-            tick();
+              frameDraw(i, false);
+              statEl.innerHTML = 'weighing routes… considered <b>' + (i + 1) + '</b> of ' + total;
+            }, delay);
           }
           return {
             init(sec) {
@@ -1489,16 +1514,13 @@
               oy = o.oy;
               plan = planRoute({ riskScale: 1, distScale: 1, recordOrder: true });
               replay.addEventListener('click', run);
-              frameDraw(0);
+              frameDraw(0, false);
             },
             show() {
               run();
             },
             hide() {
-              if (rafCancel) {
-                cancelAnimationFrame(rafCancel);
-                rafCancel = null;
-              }
+              clearInterval(timer);
             },
           };
         })());

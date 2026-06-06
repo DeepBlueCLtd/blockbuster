@@ -1,1 +1,0 @@
-import{c as o,I as r,j as t,r as n}from"./time-BROtiqND.js";import{TemporalView as s}from"./TemporalView-DWL_OaHl.js";const c=1;o.getState().regenerate(c);const e=document.getElementById("root");if(!e)throw new Error("Root element #root not found");r.createRoot(e).render(t.jsx(n.StrictMode,{children:t.jsx(s,{})}));
