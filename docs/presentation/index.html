@@ -1467,7 +1467,7 @@
               const [c, r] = plan.order[j];
               const [x, y] = center(c, r, ox, oy, SIZE);
               hexPath(ctx, x, y, SIZE);
-              ctx.fillStyle = 'rgba(15,52,96,0.20)';
+              ctx.fillStyle = 'rgba(15,52,96,0.42)';
               ctx.fill();
             }
             if (done) {
@@ -1487,7 +1487,7 @@
           function run() {
             clearInterval(timer);
             const total = plan.order.length;
-            const delay = Math.max(55, Math.min(140, Math.round(5200 / total)));
+            const delay = Math.max(28, Math.min(70, Math.round(2600 / total)));
             let i = 0;
             frameDraw(0, false);
             statEl.innerHTML = 'weighing routes… considered <b>1</b> of ' + total;
