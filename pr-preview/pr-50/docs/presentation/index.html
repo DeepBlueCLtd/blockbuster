@@ -1,0 +1,1876 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Making the Intangible Tangible — Blockbuster</title>
+
+    <!-- Vendored reveal.js (offline). Theme is custom (below) to match docs/approaches.html. -->
+    <link rel="stylesheet" href="reveal/reset.css" />
+    <link rel="stylesheet" href="reveal/reveal.css" />
+
+    <style>
+      /* ── Palette, lifted from docs/approaches.html so the two read as one set ── */
+      :root {
+        --bg: #ffffff;
+        --fg: #1a1a2e;
+        --muted: #5a6072;
+        --accent: #0f3460;
+        --accent2: #16213e;
+        --card-bg: #f8f9fa;
+        --border: #dee2e6;
+        --radius: 10px;
+        /* five risk channels — the shared colour vocabulary */
+        --risk-animals: #e67e22;
+        --risk-cold: #3498db;
+        --risk-heat: #e74c3c;
+        --risk-water: #1abc9c;
+        --risk-human: #9b59b6;
+      }
+
+      html,
+      body {
+        background: var(--bg);
+      }
+
+      /* ── Custom reveal theme (no bundled theme/font dependency) ── */
+      .reveal {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        font-size: 30px;
+        color: var(--fg);
+      }
+      .reveal .slides {
+        text-align: left;
+      }
+      .reveal .slides section {
+        height: 100%;
+      }
+      .reveal h1,
+      .reveal h2,
+      .reveal h3 {
+        color: var(--accent);
+        text-transform: none;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        line-height: 1.1;
+        margin: 0 0 0.4em;
+      }
+      .reveal h1 {
+        font-size: 1.85em;
+      }
+      .reveal h2 {
+        font-size: 1.35em;
+      }
+      .reveal h3 {
+        font-size: 1.05em;
+      }
+      .reveal p,
+      .reveal li {
+        line-height: 1.4;
+      }
+      .reveal a {
+        color: var(--accent);
+      }
+      .reveal strong {
+        color: var(--accent2);
+      }
+      .reveal .controls {
+        color: var(--accent);
+      }
+      .reveal .progress {
+        color: var(--accent);
+      }
+      .reveal .slide-number {
+        background: transparent;
+        color: var(--muted);
+      }
+
+      .lead {
+        font-size: 1.05em;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .small {
+        font-size: 0.72em;
+      }
+      .tiny {
+        font-size: 0.6em;
+        color: var(--muted);
+      }
+      .kbd {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 0.05em 0.4em;
+        font-size: 0.85em;
+      }
+      .center {
+        text-align: center;
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.5em;
+        font-weight: 700;
+        color: var(--risk-water);
+        margin: 0 0 0.6em;
+      }
+
+      canvas {
+        display: block;
+      }
+      .stage {
+        display: flex;
+        gap: 1.2rem;
+        align-items: center;
+        justify-content: center;
+      }
+      .stage canvas {
+        background: #eef1f4;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        max-width: 100%;
+      }
+      .hint {
+        font-size: 0.62em;
+        color: var(--muted);
+        margin-top: 0.5em;
+        text-align: center;
+      }
+      .hint b {
+        color: var(--accent);
+      }
+
+      /* ── Slide 2: the four payoff cards ── */
+      .payoff-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.9rem;
+        margin-top: 0.6em;
+      }
+      .payoff-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-left: 5px solid var(--accent);
+        border-radius: var(--radius);
+        padding: 0.7rem 0.9rem;
+      }
+      .payoff-card h3 {
+        margin: 0 0 0.15em;
+        font-size: 0.95em;
+      }
+      .payoff-card.lead {
+        border-left-color: var(--risk-heat);
+      }
+      .payoff-card p {
+        margin: 0;
+        font-size: 0.62em;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
+      /* ── Persistent payoff tracker (promise → proven) ── */
+      #payoff-tracker {
+        position: fixed;
+        left: 14px;
+        bottom: 12px;
+        z-index: 40;
+        display: flex;
+        gap: 6px;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+        pointer-events: none;
+      }
+      #payoff-tracker.visible {
+        opacity: 1;
+      }
+      .pf {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+        background: #fff;
+        border: 1.5px dashed var(--border);
+        border-radius: 999px;
+        padding: 3px 11px 3px 9px;
+        transition:
+          background 0.45s ease,
+          color 0.45s ease,
+          border-color 0.45s ease,
+          transform 0.45s ease;
+      }
+      .pf::before {
+        content: '○';
+        font-size: 11px;
+        color: var(--border);
+      }
+      .pf.proven {
+        color: #fff;
+        background: var(--accent);
+        border-style: solid;
+        border-color: var(--accent);
+      }
+      .pf.proven::before {
+        content: '✓';
+        color: #fff;
+      }
+      .pf.lead.proven {
+        background: var(--risk-heat);
+        border-color: var(--risk-heat);
+      }
+      .pf.just-proven {
+        transform: translateY(-3px) scale(1.06);
+      }
+
+      /* ── Slide 4: fuzzy → numbers ── */
+      .reveal-flip {
+        display: flex;
+        gap: 1.6rem;
+        align-items: center;
+        justify-content: center;
+      }
+      .bars5 {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        height: 220px;
+        padding: 0 6px;
+      }
+      .bars5 .b {
+        width: 42px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        height: 100%;
+      }
+      .bars5 .b .fill {
+        width: 100%;
+        border-radius: 4px 4px 0 0;
+        height: 0;
+      }
+      .bars5 .b .val {
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 3px;
+      }
+      .bars5 .b .lab {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 5px;
+      }
+
+      /* ── Dials (H1) ── */
+      .dials {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-top: 0.7em;
+        flex-wrap: wrap;
+      }
+      .dial {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 12px;
+        width: 116px;
+      }
+      .dial label {
+        font-weight: 700;
+        margin-bottom: 2px;
+      }
+      .dial input[type='range'] {
+        width: 100%;
+      }
+      .dial .v {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .swatch {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        margin-right: 4px;
+        vertical-align: baseline;
+      }
+
+      /* ── COA comparator (H2) ── */
+      .coas {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        align-items: stretch;
+      }
+      .coa {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 0.5rem;
+        text-align: center;
+        width: 300px;
+      }
+      .coa h3 {
+        margin: 0.1em 0 0.05em;
+        font-size: 0.8em;
+      }
+      .coa .persona {
+        font-size: 0.5em;
+        color: var(--muted);
+        min-height: 2.4em;
+      }
+      .coa .nums {
+        font-size: 0.52em;
+        color: var(--accent2);
+        font-variant-numeric: tabular-nums;
+        margin-top: 0.3em;
+      }
+      .coa .nums b {
+        font-size: 1.25em;
+      }
+
+      /* ── Audit (H3) ── */
+      .audit-wrap {
+        display: flex;
+        gap: 1.1rem;
+        align-items: flex-start;
+        justify-content: center;
+      }
+      .audit-side {
+        width: 300px;
+      }
+      .step-bars {
+        display: flex;
+        gap: 3px;
+        align-items: flex-end;
+        height: 150px;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 6px 6px;
+      }
+      .step-bars .sb {
+        flex: 1;
+        display: flex;
+        flex-direction: column-reverse;
+        cursor: pointer;
+        border-radius: 2px 2px 0 0;
+        overflow: hidden;
+        min-width: 8px;
+        outline: 2px solid transparent;
+        transition: outline-color 0.15s;
+      }
+      .step-bars .sb.sel {
+        outline-color: var(--accent2);
+      }
+      .step-bars .seg {
+        width: 100%;
+      }
+      .callout {
+        margin-top: 0.6rem;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.5rem 0.7rem;
+        font-size: 0.56em;
+        min-height: 6.5em;
+      }
+      .callout .row {
+        display: flex;
+        justify-content: space-between;
+        padding: 1px 0;
+      }
+      .callout .row .amt {
+        font-variant-numeric: tabular-nums;
+        font-weight: 700;
+      }
+      .callout .tot {
+        border-top: 1px solid var(--border);
+        margin-top: 3px;
+        padding-top: 3px;
+        font-weight: 700;
+      }
+      .toggle {
+        font-size: 0.55em;
+        margin-top: 0.5em;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      /* ── Pipeline recap (S5) ── */
+      .pipeline {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.2rem;
+        flex-wrap: wrap;
+        margin: 0.4em 0 0.6em;
+      }
+      .pnode {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-top: 4px solid var(--accent);
+        border-radius: 8px;
+        padding: 0.5rem 0.7rem;
+        font-size: 0.6em;
+        font-weight: 700;
+        color: var(--accent2);
+        text-align: center;
+      }
+      .pnode small {
+        display: block;
+        font-weight: 400;
+        color: var(--muted);
+        font-size: 0.8em;
+      }
+      .parrow {
+        color: var(--accent);
+        font-size: 0.8em;
+      }
+      .vs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-top: 0.4em;
+      }
+      .vs .col {
+        border-radius: 8px;
+        padding: 0.6rem 0.9rem;
+        font-size: 0.62em;
+      }
+      .vs .old {
+        background: #fbeaea;
+        border: 1px solid #f0c9c9;
+      }
+      .vs .new {
+        background: #e9f3ee;
+        border: 1px solid #c7e3d4;
+      }
+      .vs h3 {
+        font-size: 0.95em;
+        margin: 0 0 0.25em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <!-- ─────────────── 1 · Title ─────────────── -->
+        <section id="s-title" class="center">
+          <p class="eyebrow">Blockbuster · a worked example</p>
+          <h1>Making the Intangible Tangible</h1>
+          <p class="lead" style="margin-bottom: 0.25em">
+            <strong>Name it · Measure it · Optimise the outcome.</strong>
+          </p>
+          <p class="muted" style="margin-top: 0">
+            Turning a route-planning judgement into options you can compare — and a choice you can
+            <strong>defend.</strong>
+          </p>
+          <p class="tiny" style="margin-top: 2em">
+            <span class="kbd">→</span> next &nbsp;·&nbsp; <span class="kbd">S</span> speaker
+            notes &nbsp;·&nbsp; <span class="kbd">F</span> full-screen
+          </p>
+          <aside class="notes">
+            One promise for the whole talk: if we measure risk, choosing a route stops being a
+            gut call and becomes something we can compute, compare, and justify. Keep it to a
+            sentence and move on.
+          </aside>
+        </section>
+
+        <!-- ─────────────── 2 · The bottom line (BLUF) ─────────────── -->
+        <section id="s-bottomline">
+          <h2>The bottom line</h2>
+          <p class="lead">
+            <strong>Name and measure</strong> what matters — here, five risks — and route-planning
+            becomes an <strong>optimisation problem</strong>. For you, that buys four things:
+          </p>
+          <div class="payoff-grid">
+            <div class="payoff-card lead">
+              <h3>🛡 Defensible</h3>
+              <p>Every route shows <em>why</em> it was chosen — the assumptions are explicit, auditable and repeatable.</p>
+            </div>
+            <div class="payoff-card">
+              <h3>⑂ Options</h3>
+              <p>Several genuinely different courses of action — not one black box.</p>
+            </div>
+            <div class="payoff-card">
+              <h3>🎚 Control</h3>
+              <p>Your priorities drive the result. The maths serves judgement.</p>
+            </div>
+            <div class="payoff-card">
+              <h3>⚡ Speed &amp; consistency</h3>
+              <p>Seconds, not hours — and the same answer every time.</p>
+            </div>
+          </div>
+          <p class="hint">The rest of this talk pays off each promise. Watch the badges below.</p>
+          <aside class="notes">
+            This is the answer, up front. Don't prove anything yet — just plant the four
+            promises. The corner badges start as dashed outlines and fill in (✓) as we prove
+            each. Tell them: "I'll earn each of these in the next few minutes."
+          </aside>
+        </section>
+
+        <!-- ─────────────── 3 · The problem ─────────────── -->
+        <section id="s-challenge">
+          <h2>The problem we're solving</h2>
+          <p>
+            Move a team from <strong>A</strong> to <strong>B</strong> across ~50 km of country.
+            Not all ground is equal — some is dangerous. There are <em>countless</em> routes.
+          </p>
+          <div class="stage">
+            <canvas id="s1Canvas" width="640" height="320"></canvas>
+          </div>
+          <div style="text-align: center; margin-top: 0.4em">
+            <span class="small muted">What matters more?</span>
+            <input
+              id="s1Slider"
+              type="range"
+              min="0"
+              max="100"
+              value="50"
+              style="width: 320px; vertical-align: middle"
+            />
+            <span class="small" id="s1Label" style="min-width: 7em; display: inline-block"></span>
+          </div>
+          <p class="hint">
+            There's no single "best" — drag the slider and the sensible route changes. Today an
+            expert eyeballs this: <b>slow, varies by planner, hard to justify.</b>
+          </p>
+          <aside class="notes">
+            The point of this slide: "best" depends on what you'll risk. Short-and-exposed
+            vs long-and-safe. Drag from speed to safety and show the route swing wide around the
+            dangerous (red) ground. Land it: to choose, you must compare; to compare, you must
+            measure. That sets up the next slide.
+          </aside>
+        </section>
+
+        <!-- ─────────────── 4 · Introduce metrics (the hinge) ─────────────── -->
+        <section id="s-metrics">
+          <h2>The move: make it measurable ⭐</h2>
+          <p>
+            <strong>Name</strong> the factors that matter — here, five plain risks.
+            <strong>Put a scale</strong> on each (0–1). Then <strong>score</strong> every patch of
+            ground: vague "danger" becomes data.
+          </p>
+          <div class="reveal-flip">
+            <div class="center">
+              <canvas
+                id="s2Blob"
+                width="200"
+                height="200"
+                style="
+                  background: #eef1f4;
+                  border-radius: 12px;
+                  border: 1px solid var(--border);
+                "
+              ></canvas>
+              <div class="small muted" style="margin-top: 0.3em">one patch of ground</div>
+            </div>
+            <div style="font-size: 2em; color: var(--muted)">→</div>
+            <div>
+              <div class="bars5" id="s2Bars"></div>
+            </div>
+          </div>
+          <p class="hint">
+            <button id="s2Btn" class="kbd" style="cursor: pointer; font-size: 1em">
+              ↺ replay
+            </button>
+            &nbsp; The same machinery fits any factor you can name — risks, or success factors like
+            distance.
+          </p>
+          <aside class="notes">
+            The hinge, in three beats: NAME the factors, put a SCALE on each, then SCORE the
+            ground. "Vague danger" on the left resolves into five measured numbers as the slide
+            opens (↺ replay to re-run). Name them in plain words: Animals, Cold, Heat, Thirst,
+            Bandits (these five colours recur on every later chart). Stress that this fits any
+            factor you can name, not only risks — distance is already a non-risk factor in the mix.
+          </aside>
+        </section>
+
+        <!-- ─────────────── 5 · Proof: Control ─────────────── -->
+        <section id="s-control" data-proves="control">
+          <h2>Proof ① — you stay in control</h2>
+          <p>
+            How much each risk matters is <strong>your</strong> call: a dial per risk. Low = avoid
+            it; high = tolerate it. The maths serves your judgement, it doesn't replace it.
+          </p>
+          <div class="stage">
+            <canvas id="h1Canvas" width="600" height="300"></canvas>
+          </div>
+          <div class="dials" id="h1Dials"></div>
+          <p class="hint">
+            <b>Drag a dial.</b> Tolerate the bandits and the route takes the shortcut through the
+            town; avoid them and it swings well clear.
+          </p>
+          <aside class="notes">
+            The Control hero. The default plan already keeps clear of the purple bandit town.
+            Drag "Bandits" tolerance UP — the route opens the shortcut straight through the town
+            to save distance; drag it back down and it swings wide again. Then try "Heat" or
+            "Thirst" to steer it around the red/teal south-east. Message: the decision-maker
+            drives the plan; the tool just obeys their priorities. This fills the Control badge.
+          </aside>
+        </section>
+
+        <!-- ─────────────── 6 · Cost ─────────────── -->
+        <section id="s-cost">
+          <h2>One number per step</h2>
+          <p>
+            Combine the dialled risks (plus a little for distance) into a single
+            <strong>cost</strong> to cross each patch. A route's cost is just the
+            <strong>sum of its steps</strong>.
+          </p>
+          <div class="stage" style="align-items: flex-start">
+            <div class="center">
+              <canvas id="s3Canvas" width="360" height="250"></canvas>
+              <div class="small muted">walking the route</div>
+            </div>
+            <div class="center">
+              <div
+                id="s3Bar"
+                style="
+                  display: flex;
+                  gap: 3px;
+                  align-items: flex-end;
+                  height: 200px;
+                  background: var(--card-bg);
+                  border: 1px solid var(--border);
+                  border-radius: 8px;
+                  padding: 8px;
+                "
+              ></div>
+              <div class="small" style="margin-top: 0.3em">
+                running total: <b id="s3Total" style="color: var(--accent2)">0.0</b>
+              </div>
+            </div>
+          </div>
+          <p class="hint">
+            <button id="s3Replay" class="kbd" style="cursor: pointer; font-size: 1em">↺ replay</button>
+            &nbsp; Each bar is one step's cost, coloured by which risks drove it.
+          </p>
+          <aside class="notes">
+            Keep the formula OFF the slide. For your own reference: per cell,
+            cost = Σ riskᵢ × (1 − appetiteᵢ) × 10, plus distance × 1 per km. The charts show the
+            risk part only (distance is a flat per-step constant, so it adds no per-cell signal).
+            Point: a whole route collapses to one comparable number.
+          </aside>
+        </section>
+
+        <!-- ─────────────── 7 · Proof: Speed ─────────────── -->
+        <section id="s-speed" data-proves="speed">
+          <h2>Proof ② — fast &amp; consistent</h2>
+          <p>
+            With a cost on every step, finding a cheapest route is a <strong>well-understood
+            problem</strong>. The computer weighs thousands of paths in a blink —
+          </p>
+          <div class="stage">
+            <canvas id="s4Canvas" width="640" height="320"></canvas>
+          </div>
+          <p class="hint">
+            <span id="s4Stat"></span> &nbsp;·&nbsp; <b>same inputs → same answer, every time.</b>
+            &nbsp;
+            <button id="s4Replay" class="kbd" style="cursor: pointer; font-size: 1em">↺ replay</button>
+          </p>
+          <aside class="notes">
+            The Speed &amp; consistency hero (supporting). The amber line is the route the search
+            is weighing at that moment; lightly-shaded cells are options already considered. It
+            tries many candidate routes, then snaps to the cheapest (white). Contrast with hours
+            of manual map-reading, and stress determinism: identical inputs always reproduce the
+            identical plan. If anyone asks whether it is <em>provably</em> optimal: on a static
+            map, yes — A* returns the cheapest leg; once time-varying modifiers (day/night, storm,
+            wind) or Dynamic speed are active it is a high-quality time-aware heuristic, not a
+            guarantee. The determinism claim — same inputs, same answer — always holds. Fills the
+            Speed badge.
+          </aside>
+        </section>
+
+        <!-- ─────────────── 8 · Proof: Options ─────────────── -->
+        <section id="s-options" data-proves="options">
+          <h2>Proof ③ — options, not one answer</h2>
+          <p>
+            We deliberately surface <strong>three</strong> genuinely different routes — then
+            <em>you</em> choose the one that fits the day.
+          </p>
+          <div class="coas" id="h2Coas"></div>
+          <p class="hint">
+            Same map, same metrics — the planner's best route plus two real alternatives. The
+            decision stays yours.
+          </p>
+          <aside class="notes">
+            The Options hero. The planner doesn't hand over one answer — it surfaces its best
+            (lowest-risk) route plus two genuinely different alternatives, kept distinct on
+            purpose. The alternatives cost a little more risk, but a planner might prefer one for
+            reasons the map can't see (timing, intelligence, orders). The mini-maps show three
+            different lines; the bars and totals show what each costs. The choice stays human.
+            Fills the Options badge.
+          </aside>
+        </section>
+
+        <!-- ─────────────── 9 · Proof: Defensible (lead) ─────────────── -->
+        <section id="s-defensible" data-proves="defensible">
+          <h2>Proof ④ — defensible by construction ⭐</h2>
+          <p>
+            Every route carries its <strong>reasons</strong>: the cost, broken down by risk,
+            step by step. Click any step to see why.
+          </p>
+          <div class="audit-wrap">
+            <div class="center">
+              <canvas id="h3Canvas" width="560" height="290"></canvas>
+            </div>
+            <div class="audit-side">
+              <div class="small muted" style="margin-bottom: 3px">cost per step (click one):</div>
+              <div class="step-bars" id="h3Steps"></div>
+              <div class="callout" id="h3Callout"></div>
+              <label class="toggle">
+                <input type="checkbox" id="h3Compare" /> compare with the <b>bolder</b> option
+              </label>
+            </div>
+          </div>
+          <p class="hint">Total → route → step → reason. "Why not the faster route?" — here's the answer, by risk.</p>
+          <aside class="notes">
+            The lead payoff, given the climax. Click a step on the route or a bar — it highlights
+            and shows exactly which risks cost what. Then tick "compare with the bolder option":
+            the faster route overlays (dashed) and you see precisely how much extra risk it
+            trades for the distance saved. That is defensibility — you can always answer "why
+            this and not that?" — under your stated assumptions. The tool makes the assumptions
+            visible; it doesn't certify them. Fills the Defensible badge (the red one).
+          </aside>
+        </section>
+
+        <!-- ─────────────── 10 · Recap ─────────────── -->
+        <section id="s-recap">
+          <h2>Back to the bottom line</h2>
+          <div class="pipeline">
+            <div class="pnode">Name it<small>your judgement: the factors</small></div>
+            <span class="parrow">→</span>
+            <div class="pnode">Measure it<small>score each, 0–1</small></div>
+            <span class="parrow">→</span>
+            <div class="pnode">Optimise the outcome<small>your appetite → 3 routes</small></div>
+          </div>
+          <div class="vs">
+            <div class="col old">
+              <h3>The old way</h3>
+              Eyeball the map → <strong>one</strong> route, in someone's head, hard to justify
+              and impossible to reproduce.
+            </div>
+            <div class="col new">
+              <h3>The measured way</h3>
+              Name the factors → measure them → <strong>optimise the outcome</strong>: three
+              defensible options, under your control, in seconds.
+            </div>
+          </div>
+          <p class="hint">All four promises — now paid. ↓</p>
+          <aside class="notes">
+            Tie the bow. Walk left-to-right across the pipeline once. Note every badge is now
+            filled. The single idea that unlocked all four payoffs was introducing metrics.
+          </aside>
+        </section>
+
+        <!-- ─────────────── 11 · Close (optional) ─────────────── -->
+        <section id="s-close" class="center">
+          <h2>What it unlocks</h2>
+          <p class="lead" style="max-width: 22em; margin: 0 auto">
+            One consistent method across every planner and scenario — and
+            <strong>what-if in seconds</strong> as conditions change: a storm rolls in, night
+            falls, a road closes. Re-dial, re-plan, re-justify.
+          </p>
+          <p class="muted" style="margin-top: 2em">
+            The metrics don't make the decision — they make your decision <strong>explainable</strong>.
+          </p>
+          <aside class="notes">
+            Optional closer — trim first if short on time. The honest line is now on the slide
+            itself — the metrics don't make the decision, they make your decision explainable.
+            Land it, then add the spoken coda: and fast to revisit as conditions change.
+          </aside>
+        </section>
+      </div>
+    </div>
+
+    <!-- promise → proven tracker -->
+    <div id="payoff-tracker" aria-hidden="true">
+      <span class="pf lead" data-pf="defensible">Defensible</span>
+      <span class="pf" data-pf="options">Options</span>
+      <span class="pf" data-pf="control">Control</span>
+      <span class="pf" data-pf="speed">Speed</span>
+    </div>
+
+    <script src="reveal/reveal.js"></script>
+    <script src="reveal/plugin/notes.js"></script>
+    <script>
+      /* =====================================================================
+       * Shared scenario module
+       * One seeded world + one cost model, reused by every widget so the deck
+       * tells a single continuous story. The cost model mirrors the real engine
+       * (src/domain/cost.ts): cost = Σ riskᵢ × (1 − appetiteᵢ) × riskWeight,
+       * plus a flat movement cost per step. A* mirrors src/engine/routing.
+       * Primitives (mulberry32, the hex/A* core, the risk palette) are adapted
+       * from docs/approaches.html.
+       * ===================================================================== */
+      (function () {
+        'use strict';
+
+        // ── Risk vocabulary (engine order: animals, cold, heat, water, human) ──
+        const RISK_KEYS = ['animals', 'cold', 'heat', 'water', 'human'];
+        const RISK_COLORS = {
+          animals: '#e67e22',
+          cold: '#3498db',
+          heat: '#e74c3c',
+          water: '#1abc9c',
+          human: '#9b59b6',
+        };
+        // Decision-maker-friendly labels for the chosen scenario
+        const RISK_LABELS = {
+          animals: 'Animals',
+          cold: 'Cold',
+          heat: 'Heat',
+          water: 'Thirst',
+          human: 'Bandits',
+        };
+        const RISK_WEIGHT = 10; // mirrors DEFAULT_COST_PARAMS.riskWeight
+        const MOVE_COST = 1; // flat per-step movement cost (distanceWeightKm = 1)
+        const DEFAULT_APPETITE = { animals: 0.5, cold: 0.5, heat: 0.5, water: 0.5, human: 0.5 };
+
+        const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+        function mulberry32(seed) {
+          let a = seed >>> 0;
+          return function () {
+            a |= 0;
+            a = (a + 0x6d2b79f5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+
+        // ── Hex grid: pointy-top, odd-r offset coordinates ──
+        const COLS = 15,
+          ROWS = 9;
+        const SQRT3 = Math.sqrt(3);
+        const MIDROW = Math.floor((ROWS - 1) / 2);
+        const START = { col: 0, row: MIDROW };
+        const GOAL = { col: COLS - 1, row: MIDROW };
+
+        const key = (c, r) => c + ',' + r;
+        const fromKey = (k) => {
+          const i = k.indexOf(',');
+          return [+k.slice(0, i), +k.slice(i + 1)];
+        };
+        const inGrid = (c, r) => c >= 0 && c < COLS && r >= 0 && r < ROWS;
+
+        const ODDR = [
+          [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]],
+          [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]],
+        ];
+        function neighbors(c, r) {
+          const out = [];
+          for (const [dc, dr] of ODDR[r & 1]) {
+            const nc = c + dc,
+              nr = r + dr;
+            if (inGrid(nc, nr)) out.push([nc, nr]);
+          }
+          return out;
+        }
+        function cube(c, r) {
+          const q = c - (r - (r & 1)) / 2;
+          return [q, r, -q - r];
+        }
+        function hexDist(ac, ar, bc, br) {
+          const a = cube(ac, ar),
+            b = cube(bc, br);
+          return (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])) / 2;
+        }
+        function gridDims(size) {
+          return { w: SQRT3 * size * (COLS + 0.5), h: 1.5 * size * (ROWS - 1) + 2 * size };
+        }
+        function originFor(canvas, size) {
+          const d = gridDims(size);
+          return {
+            ox: (canvas.width - d.w) / 2 + (SQRT3 * size) / 2,
+            oy: (canvas.height - d.h) / 2 + size,
+          };
+        }
+        function center(c, r, ox, oy, size) {
+          return [ox + SQRT3 * size * (c + 0.5 * (r & 1)), oy + 1.5 * size * r];
+        }
+        function hexPath(ctx, x, y, size) {
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const ang = (Math.PI / 180) * (60 * i - 30);
+            const px = x + size * Math.cos(ang),
+              py = y + size * Math.sin(ang);
+            i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+          }
+          ctx.closePath();
+        }
+
+        // ── The world: a 5-channel risk profile per cell, planted features +
+        //    organic noise so routes visibly dodge named hazards ──
+        const SEED = 7;
+        function makeNoise(rng) {
+          const LW = 5,
+            LH = 4,
+            CH = 5;
+          const lat = [];
+          for (let c = 0; c < CH; c++) {
+            const a = [];
+            for (let i = 0; i < (LW + 1) * (LH + 1); i++) a.push(rng());
+            lat.push(a);
+          }
+          const sm = (t) => t * t * (3 - 2 * t);
+          return (nx, ny, ch) => {
+            const L = lat[ch];
+            const x = nx * LW,
+              y = ny * LH;
+            const ix = Math.floor(x),
+              iy = Math.floor(y);
+            const tx = sm(x - ix),
+              ty = sm(y - iy);
+            const at = (a, b) => L[Math.min(b, LH) * (LW + 1) + Math.min(a, LW)];
+            const top = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * tx;
+            const bot = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * tx;
+            return top + (bot - top) * ty - 0.5;
+          };
+        }
+        function buildField() {
+          const rng = mulberry32(SEED);
+          const noise = makeNoise(rng);
+          const field = new Map();
+          for (let row = 0; row < ROWS; row++) {
+            for (let col = 0; col < COLS; col++) {
+              const nx = col / (COLS - 1),
+                ny = row / (ROWS - 1);
+              const g = (cx, cy, r, amp) =>
+                amp * Math.exp(-(((nx - cx) ** 2 + (ny - cy) ** 2) / (2 * r * r)));
+              const bandY = (cy, h, amp) => amp * Math.exp(-((ny - cy) ** 2 / (2 * h * h)));
+              // The bandits hold a central STRONGHOLD straddling the straight line
+              // A→B. The direct path crosses it; safer paths bow around it, trading
+              // distance for less risk — a clean spectrum the three options live on.
+              const profile = {
+                human: clamp01(0.02 + g(0.5, 0.5, 0.22, 1.15) + noise(nx, ny, 0) * 0.03),
+                // animal-heavy woodland in the north-west (mild)
+                animals: clamp01(0.03 + g(0.16, 0.22, 0.13, 0.6) + noise(nx, ny, 1) * 0.06),
+                // cold high ground banding the north edge (mild)
+                cold: clamp01(0.03 + bandY(0.04, 0.09, 0.5) + noise(nx, ny, 2) * 0.05),
+                // a hot, exposed south-east corner (nudges routes to bow north)
+                heat: clamp01(0.03 + g(0.85, 0.85, 0.2, 0.85) + noise(nx, ny, 3) * 0.05),
+                // thirst (water scarcity): worst around the south-east desert
+                water: clamp01(0.05 + g(0.82, 0.8, 0.22, 0.7) + noise(nx, ny, 4) * 0.05),
+              };
+              field.set(key(col, row), profile);
+            }
+          }
+          return field;
+        }
+        const FIELD = buildField();
+
+        // ── Cost model (faithful to src/domain/cost.ts) ──
+        const sensitivity = (a) => 1 - a;
+        function cellRiskCost(profile, appetite) {
+          let t = 0;
+          for (const k of RISK_KEYS) t += profile[k] * sensitivity(appetite[k]);
+          return t * RISK_WEIGHT;
+        }
+        function riskBreakdown(profile, appetite) {
+          const o = {};
+          for (const k of RISK_KEYS) o[k] = profile[k] * sensitivity(appetite[k]) * RISK_WEIGHT;
+          return o;
+        }
+        // Tint a cell by its DOMINANT risk channel, paled toward parchment by how
+        // mild it is — so the map reads as terrain in the shared colour vocabulary
+        // (purple town, blue cold ridge, red desert, orange woodland, teal thirst).
+        const HEX_RGB = {};
+        for (const k of RISK_KEYS) {
+          const h = RISK_COLORS[k];
+          HEX_RGB[k] = [
+            parseInt(h.slice(1, 3), 16),
+            parseInt(h.slice(3, 5), 16),
+            parseInt(h.slice(5, 7), 16),
+          ];
+        }
+        const PARCHMENT = [238, 241, 244];
+        function cellColor(p) {
+          let mk = RISK_KEYS[0],
+            mv = p[mk];
+          for (const k of RISK_KEYS) {
+            if (p[k] > mv) {
+              mv = p[k];
+              mk = k;
+            }
+          }
+          const base = HEX_RGB[mk];
+          const t = clamp01((mv - 0.12) / 0.72);
+          const mix = (a, b) => Math.round(b + (a - b) * t);
+          return `rgb(${mix(base[0], PARCHMENT[0])},${mix(base[1], PARCHMENT[1])},${mix(base[2], PARCHMENT[2])})`;
+        }
+
+        // ── A* (mirrors src/engine/routing): cheapest path under a weighting ──
+        function planRoute(opts) {
+          const appetite = opts.appetite || DEFAULT_APPETITE;
+          const riskScale = opts.riskScale == null ? 1 : opts.riskScale;
+          const distScale = opts.distScale == null ? 1 : opts.distScale;
+          const recordOrder = !!opts.recordOrder;
+          const penalty = opts.cellPenalty || null; // diversity: inflate already-used cells
+          const open = [];
+          const g = new Map();
+          const came = new Map();
+          const closed = new Set();
+          const order = [];
+          let seq = 0;
+          const h = (c, r) => hexDist(c, r, GOAL.col, GOAL.row) * MOVE_COST * distScale;
+          const push = (c, r, gg) => open.push({ c, r, g: gg, f: gg + h(c, r), seq: seq++ });
+          const pop = () => {
+            let bi = -1,
+              best = null;
+            for (let i = 0; i < open.length; i++) {
+              const o = open[i];
+              if (!best || o.f < best.f || (o.f === best.f && o.seq < best.seq)) {
+                best = o;
+                bi = i;
+              }
+            }
+            if (bi < 0) return null;
+            open.splice(bi, 1);
+            return best;
+          };
+          g.set(key(START.col, START.row), 0);
+          push(START.col, START.row, 0);
+          let node;
+          while ((node = pop())) {
+            const ck = key(node.c, node.r);
+            if (closed.has(ck)) continue;
+            closed.add(ck);
+            if (recordOrder) order.push([node.c, node.r]);
+            if (ck === key(GOAL.col, GOAL.row)) break;
+            const gc = g.get(ck);
+            for (const [nc, nr] of neighbors(node.c, node.r)) {
+              const nk = key(nc, nr);
+              if (closed.has(nk)) continue;
+              let enter = distScale * MOVE_COST + riskScale * cellRiskCost(FIELD.get(nk), appetite);
+              if (penalty) enter *= penalty(nk);
+              const tentative = gc + enter;
+              if (tentative < (g.has(nk) ? g.get(nk) : Infinity)) {
+                g.set(nk, tentative);
+                came.set(nk, ck);
+                push(nc, nr, tentative);
+              }
+            }
+          }
+          const path = [];
+          let k = key(GOAL.col, GOAL.row);
+          if (came.has(k) || k === key(START.col, START.row)) {
+            while (true) {
+              const [c, r] = fromKey(k);
+              path.push({ col: c, row: r });
+              if (k === key(START.col, START.row)) break;
+              const p = came.get(k);
+              if (p === undefined) break;
+              k = p;
+            }
+            path.reverse();
+          }
+          return { path, order, came };
+        }
+
+        // total risk cost of a whole route (honest: at the given appetite)
+        function routeRiskTotal(path, appetite) {
+          return path.reduce((s, p) => s + cellRiskCost(FIELD.get(key(p.col, p.row)), appetite), 0);
+        }
+        function routeBreakdown(path, appetite) {
+          const tot = {};
+          for (const k of RISK_KEYS) tot[k] = 0;
+          for (const p of path) {
+            const b = riskBreakdown(FIELD.get(key(p.col, p.row)), appetite);
+            for (const k of RISK_KEYS) tot[k] += b[k];
+          }
+          return tot;
+        }
+
+        // ── Shared drawing helpers ──
+        function drawField(ctx, ox, oy, size, opts) {
+          opts = opts || {};
+          for (let row = 0; row < ROWS; row++) {
+            for (let col = 0; col < COLS; col++) {
+              const p = FIELD.get(key(col, row));
+              const [x, y] = center(col, row, ox, oy, size);
+              hexPath(ctx, x, y, size);
+              ctx.fillStyle = opts.flat ? '#eef1f4' : cellColor(p);
+              ctx.fill();
+              ctx.lineWidth = 1;
+              ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+              ctx.stroke();
+            }
+          }
+        }
+        function strokeRoute(ctx, path, ox, oy, size, inner, width, dashed) {
+          if (!path || path.length < 2) return;
+          ctx.save();
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          if (dashed) ctx.setLineDash([6, 5]);
+          ctx.beginPath();
+          path.forEach((p, i) => {
+            const [x, y] = center(p.col, p.row, ox, oy, size);
+            i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+          });
+          ctx.lineWidth = width + 3;
+          ctx.strokeStyle = 'rgba(17,17,17,0.85)';
+          ctx.stroke();
+          ctx.lineWidth = width;
+          ctx.strokeStyle = inner;
+          ctx.stroke();
+          ctx.restore();
+        }
+        function marker(ctx, cell, ox, oy, size, color, label) {
+          const [x, y] = center(cell.col, cell.row, ox, oy, size);
+          ctx.beginPath();
+          ctx.arc(x, y, size * 0.62, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#fff';
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold ' + Math.round(size * 0.7) + 'px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, x, y);
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'alphabetic';
+        }
+        function canvasXY(canvas, ev) {
+          const r = canvas.getBoundingClientRect();
+          return [
+            ((ev.clientX - r.left) * canvas.width) / r.width,
+            ((ev.clientY - r.top) * canvas.height) / r.height,
+          ];
+        }
+        function cellAtPixel(px, py, ox, oy, size) {
+          let best = null,
+            bd = 1e9;
+          for (let row = 0; row < ROWS; row++)
+            for (let col = 0; col < COLS; col++) {
+              const [x, y] = center(col, row, ox, oy, size);
+              const d = (x - px) ** 2 + (y - py) ** 2;
+              if (d < bd) {
+                bd = d;
+                best = { col, row };
+              }
+            }
+          return bd <= size * size ? best : null;
+        }
+
+        /* =================================================================
+         * Widgets: one per slide, registered by the slide's id.
+         * init() runs once (canvas sizes are fixed, so it's safe even while a
+         * slide is off-screen / display:none). show()/hide() drive animations.
+         * ================================================================= */
+        const Widgets = {};
+        const def = (id, w) => (Widgets[id] = w);
+
+        // ── S1 (slide 3): "many roads" + a speed⇄safety morph ──
+        def('s-challenge', (function () {
+          let canvas, ctx, slider, label, ox, oy;
+          const SIZE = 18;
+          function render() {
+            const t = +slider.value / 100; // 0 = speed (tolerant), 1 = safety (averse)
+            label.textContent = t < 0.4 ? 'speed' : t > 0.6 ? 'safety' : 'balanced';
+            // "speed vs safety" sweeps a uniform risk appetite: tolerant routes cut
+            // short through the hazards, averse ones detour around them.
+            const appetiteFor = (u) => {
+              const a = 1 - u * 0.92; // speed end ≈ risk-free (cuts straight through)
+              return { animals: a, cold: a, heat: a, water: a, human: a };
+            };
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawField(ctx, ox, oy, SIZE);
+            // faint family of candidate routes across the spectrum
+            for (let i = 0; i <= 4; i++) {
+              const r = planRoute({ appetite: appetiteFor(i / 4) });
+              ctx.globalAlpha = 0.16;
+              strokeRoute(ctx, r.path, ox, oy, SIZE, '#ffffff', 2);
+              ctx.globalAlpha = 1;
+            }
+            // the highlighted pick at the slider position
+            const pick = planRoute({ appetite: appetiteFor(t) });
+            strokeRoute(ctx, pick.path, ox, oy, SIZE, '#0f3460', 4);
+            marker(ctx, START, ox, oy, SIZE, '#27ae60', 'A');
+            marker(ctx, GOAL, ox, oy, SIZE, '#c0392b', 'B');
+          }
+          return {
+            init(sec) {
+              canvas = sec.querySelector('#s1Canvas');
+              ctx = canvas.getContext('2d');
+              slider = sec.querySelector('#s1Slider');
+              label = sec.querySelector('#s1Label');
+              const o = originFor(canvas, SIZE);
+              ox = o.ox;
+              oy = o.oy;
+              slider.addEventListener('input', () => requestAnimationFrame(render));
+              render();
+            },
+            show() {
+              render();
+            },
+          };
+        })());
+
+        // ── S2 (slide 4): fuzzy danger → five measured bars ──
+        def('s-metrics', (function () {
+          let blob, bctx, barsEl, btn, profile, timer, raf;
+          function drawBlob() {
+            const w = blob.width,
+              h = blob.height;
+            bctx.clearRect(0, 0, w, h);
+            bctx.save();
+            bctx.filter = 'blur(11px)';
+            const blobs = [
+              [0.4, 0.45, RISK_COLORS.human],
+              [0.62, 0.4, RISK_COLORS.heat],
+              [0.5, 0.66, RISK_COLORS.animals],
+              [0.35, 0.6, RISK_COLORS.water],
+            ];
+            for (const [bx, by, col] of blobs) {
+              bctx.beginPath();
+              bctx.arc(bx * w, by * h, w * 0.26, 0, Math.PI * 2);
+              bctx.fillStyle = col;
+              bctx.globalAlpha = 0.55;
+              bctx.fill();
+            }
+            bctx.restore();
+            bctx.fillStyle = 'rgba(26,26,46,0.55)';
+            bctx.font = 'italic 15px sans-serif';
+            bctx.textAlign = 'center';
+            bctx.fillText('“…looks dangerous?”', w / 2, h - 16);
+            bctx.textAlign = 'left';
+          }
+          // build the five bars at zero height (labels shown, values hidden)
+          function buildBars() {
+            barsEl.innerHTML = '';
+            const fills = [],
+              vals = [];
+            for (const k of RISK_KEYS) {
+              const b = document.createElement('div');
+              b.className = 'b';
+              const v = document.createElement('div');
+              v.className = 'val';
+              v.style.color = RISK_COLORS[k];
+              v.textContent = profile[k].toFixed(2);
+              v.style.opacity = '0';
+              const fill = document.createElement('div');
+              fill.className = 'fill';
+              fill.style.background = RISK_COLORS[k];
+              fill.style.height = '0%';
+              const lab = document.createElement('div');
+              lab.className = 'lab';
+              lab.textContent = RISK_LABELS[k];
+              b.appendChild(v);
+              b.appendChild(fill);
+              b.appendChild(lab);
+              barsEl.appendChild(b);
+              fills.push(fill);
+              vals.push(v);
+            }
+            return { fills, vals };
+          }
+          function showFuzzy() {
+            cancelAnimationFrame(raf);
+            drawBlob();
+            buildBars();
+          }
+          // steadily grow the bars to their measured values over `ms` (JS-driven,
+          // so the growth is genuinely gradual rather than a CSS-transition pop)
+          function grow(ms) {
+            cancelAnimationFrame(raf);
+            const { fills, vals } = buildBars();
+            const start = performance.now();
+            const tick = (now) => {
+              const p = Math.min(1, (now - start) / ms);
+              RISK_KEYS.forEach((k, i) => {
+                fills[i].style.height = (profile[k] * 100 * p).toFixed(2) + '%';
+                vals[i].style.opacity = String(p);
+              });
+              if (p < 1) raf = requestAnimationFrame(tick);
+            };
+            raf = requestAnimationFrame(tick);
+          }
+          return {
+            init(sec) {
+              blob = sec.querySelector('#s2Blob');
+              bctx = blob.getContext('2d');
+              barsEl = sec.querySelector('#s2Bars');
+              btn = sec.querySelector('#s2Btn');
+              // a representative dangerous patch: the bandit town
+              profile = FIELD.get(key(8, 4));
+              showFuzzy();
+              btn.addEventListener('click', () => grow(1500));
+            },
+            show() {
+              // fuzzy "danger" first, then steadily resolve into numbers (no click)
+              clearTimeout(timer);
+              showFuzzy();
+              timer = setTimeout(() => grow(1500), 300);
+            },
+            hide() {
+              clearTimeout(timer);
+              cancelAnimationFrame(raf);
+            },
+          };
+        })());
+
+        // ── H1 (slide 5): steer the plan with appetite dials ──
+        def('s-control', (function () {
+          let canvas, ctx, dialsEl, ox, oy, pending;
+          const SIZE = 18;
+          const appetite = Object.assign({}, DEFAULT_APPETITE);
+          function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawField(ctx, ox, oy, SIZE);
+            const r = planRoute({ appetite });
+            strokeRoute(ctx, r.path, ox, oy, SIZE, '#0f3460', 4);
+            marker(ctx, START, ox, oy, SIZE, '#27ae60', 'A');
+            marker(ctx, GOAL, ox, oy, SIZE, '#c0392b', 'B');
+          }
+          return {
+            init(sec) {
+              canvas = sec.querySelector('#h1Canvas');
+              ctx = canvas.getContext('2d');
+              dialsEl = sec.querySelector('#h1Dials');
+              const o = originFor(canvas, SIZE);
+              ox = o.ox;
+              oy = o.oy;
+              dialsEl.innerHTML = '';
+              for (const k of RISK_KEYS) {
+                const d = document.createElement('div');
+                d.className = 'dial';
+                d.innerHTML =
+                  '<label><span class="swatch" style="background:' +
+                  RISK_COLORS[k] +
+                  '"></span>' +
+                  RISK_LABELS[k] +
+                  '</label>' +
+                  '<input type="range" min="0" max="100" value="50" data-risk="' +
+                  k +
+                  '">' +
+                  '<span class="v">tolerate 0.50</span>';
+                const input = d.querySelector('input');
+                const vEl = d.querySelector('.v');
+                input.addEventListener('input', () => {
+                  const val = +input.value / 100;
+                  appetite[k] = val;
+                  vEl.textContent = (val < 0.34 ? 'avoid ' : val > 0.66 ? 'tolerate ' : 'neutral ') + val.toFixed(2);
+                  if (pending) cancelAnimationFrame(pending);
+                  pending = requestAnimationFrame(render);
+                });
+                dialsEl.appendChild(d);
+              }
+              render();
+            },
+            show() {
+              render();
+            },
+          };
+        })());
+
+        // ── S3 (slide 6): route = sum of steps (accumulator) ──
+        def('s-cost', (function () {
+          let canvas, ctx, barEl, totalEl, replay, ox, oy, path, timer, maxStep;
+          const SIZE = 14;
+          function drawAt(stepIdx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawField(ctx, ox, oy, SIZE, { flat: false });
+            strokeRoute(ctx, path, ox, oy, SIZE, '#0f3460', 3);
+            const cell = path[Math.min(stepIdx, path.length - 1)];
+            const [x, y] = center(cell.col, cell.row, ox, oy, SIZE);
+            ctx.beginPath();
+            ctx.arc(x, y, SIZE * 0.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#0f3460';
+            ctx.stroke();
+            marker(ctx, START, ox, oy, SIZE, '#27ae60', 'A');
+            marker(ctx, GOAL, ox, oy, SIZE, '#c0392b', 'B');
+          }
+          function reset() {
+            barEl.innerHTML = '';
+            totalEl.textContent = '0.0';
+          }
+          function run() {
+            clearInterval(timer);
+            reset();
+            let i = 0;
+            let total = 0;
+            drawAt(0);
+            timer = setInterval(() => {
+              i++;
+              if (i >= path.length) {
+                clearInterval(timer);
+                return;
+              }
+              const p = path[i];
+              const b = riskBreakdown(FIELD.get(key(p.col, p.row)), DEFAULT_APPETITE);
+              const cellTot = RISK_KEYS.reduce((s, k) => s + b[k], 0);
+              total += cellTot;
+              totalEl.textContent = total.toFixed(1);
+              // append a stacked bar for this step
+              const bar = document.createElement('div');
+              bar.style.width = '16px';
+              bar.style.height = (cellTot / maxStep) * 180 + 'px';
+              bar.style.display = 'flex';
+              bar.style.flexDirection = 'column-reverse';
+              bar.style.borderRadius = '2px 2px 0 0';
+              bar.style.overflow = 'hidden';
+              for (const k of RISK_KEYS) {
+                const seg = document.createElement('div');
+                seg.style.height = cellTot > 0 ? (b[k] / cellTot) * 100 + '%' : '0';
+                seg.style.background = RISK_COLORS[k];
+                bar.appendChild(seg);
+              }
+              barEl.appendChild(bar);
+              drawAt(i);
+            }, 420);
+          }
+          return {
+            init(sec) {
+              canvas = sec.querySelector('#s3Canvas');
+              ctx = canvas.getContext('2d');
+              barEl = sec.querySelector('#s3Bar');
+              totalEl = sec.querySelector('#s3Total');
+              replay = sec.querySelector('#s3Replay');
+              const o = originFor(canvas, SIZE);
+              ox = o.ox;
+              oy = o.oy;
+              path = planRoute({ riskScale: 1, distScale: 1 }).path;
+              maxStep = 0;
+              for (const p of path) {
+                const c = cellRiskCost(FIELD.get(key(p.col, p.row)), DEFAULT_APPETITE);
+                if (c > maxStep) maxStep = c;
+              }
+              maxStep = maxStep || 1;
+              replay.addEventListener('click', run);
+              drawAt(0);
+              reset();
+            },
+            show() {
+              run();
+            },
+            hide() {
+              clearInterval(timer);
+            },
+          };
+        })());
+
+        // ── S4 (slide 7): the search weighs candidate routes, then snaps to the cheapest ──
+        def('s-speed', (function () {
+          let canvas, ctx, statEl, replay, ox, oy, plan, timer;
+          const SIZE = 18;
+          // reconstruct START → this cell via the (final, stable) came map, so we
+          // can draw the partial route the search is weighing at each step
+          function pathTo(cr) {
+            const path = [];
+            let k = key(cr[0], cr[1]);
+            const startK = key(START.col, START.row);
+            for (let guard = 0; guard < 2000; guard++) {
+              const [c, r] = fromKey(k);
+              path.push({ col: c, row: r });
+              if (k === startK) break;
+              const p = plan.came.get(k);
+              if (p === undefined) break;
+              k = p;
+            }
+            return path.reverse();
+          }
+          function frameDraw(i, done) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawField(ctx, ox, oy, SIZE);
+            // cells already considered — lightly, so the route stays legible
+            for (let j = 0; j <= i && j < plan.order.length; j++) {
+              const [c, r] = plan.order[j];
+              const [x, y] = center(c, r, ox, oy, SIZE);
+              hexPath(ctx, x, y, SIZE);
+              ctx.fillStyle = 'rgba(15,52,96,0.42)';
+              ctx.fill();
+            }
+            if (done) {
+              strokeRoute(ctx, plan.path, ox, oy, SIZE, '#fff', 4);
+            } else if (i >= 0 && i < plan.order.length) {
+              // the candidate route under consideration this step (amber)
+              strokeRoute(ctx, pathTo(plan.order[i]), ox, oy, SIZE, '#f39c12', 3);
+              const [cx, cy] = center(plan.order[i][0], plan.order[i][1], ox, oy, SIZE);
+              hexPath(ctx, cx, cy, SIZE);
+              ctx.lineWidth = 3;
+              ctx.strokeStyle = '#e67e22';
+              ctx.stroke();
+            }
+            marker(ctx, START, ox, oy, SIZE, '#27ae60', 'A');
+            marker(ctx, GOAL, ox, oy, SIZE, '#c0392b', 'B');
+          }
+          function run() {
+            clearInterval(timer);
+            const total = plan.order.length;
+            const delay = Math.max(28, Math.min(70, Math.round(2600 / total)));
+            let i = 0;
+            frameDraw(0, false);
+            statEl.innerHTML = 'weighing routes… considered <b>1</b> of ' + total;
+            timer = setInterval(() => {
+              i++;
+              if (i >= total) {
+                clearInterval(timer);
+                frameDraw(total - 1, true);
+                statEl.innerHTML = 'cheapest route found after weighing <b>' + total + '</b> options';
+                return;
+              }
+              frameDraw(i, false);
+              statEl.innerHTML = 'weighing routes… considered <b>' + (i + 1) + '</b> of ' + total;
+            }, delay);
+          }
+          return {
+            init(sec) {
+              canvas = sec.querySelector('#s4Canvas');
+              ctx = canvas.getContext('2d');
+              statEl = sec.querySelector('#s4Stat');
+              replay = sec.querySelector('#s4Replay');
+              const o = originFor(canvas, SIZE);
+              ox = o.ox;
+              oy = o.oy;
+              plan = planRoute({ riskScale: 1, distScale: 1, recordOrder: true });
+              replay.addEventListener('click', run);
+              frameDraw(0, false);
+            },
+            show() {
+              run();
+            },
+            hide() {
+              clearInterval(timer);
+            },
+          };
+        })());
+
+        // ── H2 (slide 8): three courses of action, side by side ──
+        def('s-options', {
+          init(sec) {
+            buildCoas(sec.querySelector('#h2Coas'));
+          },
+          show() {},
+        });
+        // builds the three side-by-side course-of-action cards
+        function buildCoas(host) {
+          const SIZE = 11;
+          const LABELS = ['Recommended', 'Alternative 1', 'Alternative 2'];
+          // The planner returns its best route plus genuinely different
+          // alternatives, forced apart by a cell-reuse penalty — exactly how the
+          // real engine fans out diverse COAs (see src/engine/routing).
+          const used = new Map();
+          const routes = [];
+          for (let i = 0; i < 3; i++) {
+            const plan = planRoute({
+              appetite: DEFAULT_APPETITE,
+              riskScale: 1,
+              distScale: 1,
+              cellPenalty: (k) => 1 + 1.4 * (used.get(k) || 0),
+            });
+            for (const p of plan.path) {
+              const kk = key(p.col, p.row);
+              used.set(kk, (used.get(kk) || 0) + 1);
+            }
+            const bd = routeBreakdown(plan.path, DEFAULT_APPETITE);
+            routes.push({
+              plan,
+              bd,
+              steps: plan.path.length - 1,
+              risk: RISK_KEYS.reduce((a, k) => a + bd[k], 0),
+            });
+          }
+          host.innerHTML = '';
+          routes.forEach((r, i) => {
+            const card = document.createElement('div');
+            card.className = 'coa';
+            const h3 = document.createElement('h3');
+            h3.textContent = LABELS[i];
+            card.appendChild(h3);
+            const cv = document.createElement('canvas');
+            cv.width = 280;
+            cv.height = 168;
+            cv.style.cssText = 'background:#eef1f4;border-radius:8px;width:100%';
+            const cx = cv.getContext('2d');
+            const o = originFor(cv, SIZE);
+            drawField(cx, o.ox, o.oy, SIZE);
+            strokeRoute(cx, r.plan.path, o.ox, o.oy, SIZE, '#0f3460', 3);
+            marker(cx, START, o.ox, o.oy, SIZE, '#27ae60', 'A');
+            marker(cx, GOAL, o.ox, o.oy, SIZE, '#c0392b', 'B');
+            card.appendChild(cv);
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'display:flex;height:30px;border-radius:4px;overflow:hidden;margin:6px 0 2px';
+            for (const k of RISK_KEYS) {
+              const seg = document.createElement('div');
+              seg.style.width = r.risk > 0 ? (r.bd[k] / r.risk) * 100 + '%' : '0';
+              seg.style.background = RISK_COLORS[k];
+              wrap.appendChild(seg);
+            }
+            card.appendChild(wrap);
+            const persona = document.createElement('div');
+            persona.className = 'persona';
+            if (i === 0) {
+              persona.innerHTML = "The planner's best balance of risk and distance.";
+            } else {
+              const morePct = Math.round((r.risk / routes[0].risk - 1) * 100);
+              persona.innerHTML =
+                'A genuinely different line — about <b>' + morePct + '% more risk</b> than the recommended.';
+            }
+            card.appendChild(persona);
+            const nums = document.createElement('div');
+            nums.className = 'nums';
+            nums.innerHTML =
+              'length <b>' + r.steps + '</b> steps &nbsp;·&nbsp; total risk <b>' + r.risk.toFixed(0) + '</b>';
+            card.appendChild(nums);
+            host.appendChild(card);
+          });
+        }
+
+        // ── H3 (slide 9): audit drill-down — why this route? ──
+        def('s-defensible', (function () {
+          let canvas, ctx, stepsEl, callout, compareChk, ox, oy;
+          const SIZE = 17;
+          let main, bolder, sel, compare;
+          function renderMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawField(ctx, ox, oy, SIZE);
+            if (compare) strokeRoute(ctx, bolder.path, ox, oy, SIZE, '#e74c3c', 3, true);
+            strokeRoute(ctx, main.path, ox, oy, SIZE, '#0f3460', 4);
+            if (sel != null && main.path[sel]) {
+              const p = main.path[sel];
+              const [x, y] = center(p.col, p.row, ox, oy, SIZE);
+              hexPath(ctx, x, y, SIZE);
+              ctx.lineWidth = 3.5;
+              ctx.strokeStyle = '#16213e';
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.arc(x, y, SIZE * 0.42, 0, Math.PI * 2);
+              ctx.fillStyle = '#16213e';
+              ctx.fill();
+            }
+            marker(ctx, START, ox, oy, SIZE, '#27ae60', 'A');
+            marker(ctx, GOAL, ox, oy, SIZE, '#c0392b', 'B');
+          }
+          function buildSteps() {
+            stepsEl.innerHTML = '';
+            let maxC = 0;
+            main.path.forEach((p) => {
+              const c = cellRiskCost(FIELD.get(key(p.col, p.row)), DEFAULT_APPETITE);
+              if (c > maxC) maxC = c;
+            });
+            maxC = maxC || 1;
+            main.path.forEach((p, i) => {
+              const b = riskBreakdown(FIELD.get(key(p.col, p.row)), DEFAULT_APPETITE);
+              const tot = RISK_KEYS.reduce((s, k) => s + b[k], 0);
+              const sb = document.createElement('div');
+              sb.className = 'sb';
+              sb.style.height = (tot / maxC) * 100 + '%';
+              for (const k of RISK_KEYS) {
+                const seg = document.createElement('div');
+                seg.className = 'seg';
+                seg.style.height = tot > 0 ? (b[k] / tot) * 100 + '%' : '0';
+                seg.style.background = RISK_COLORS[k];
+                sb.appendChild(seg);
+              }
+              sb.addEventListener('click', () => {
+                sel = i;
+                update();
+              });
+              stepsEl.appendChild(sb);
+            });
+          }
+          function showCallout() {
+            if (compare) {
+              const a = routeBreakdown(main.path, DEFAULT_APPETITE);
+              const b = routeBreakdown(bolder.path, DEFAULT_APPETITE);
+              let rows = '<div style="font-weight:700;margin-bottom:3px">Bolder route vs this one (risk by channel):</div>';
+              let dTot = 0;
+              for (const k of RISK_KEYS) {
+                const d = b[k] - a[k];
+                dTot += d;
+                rows +=
+                  '<div class="row"><span><span class="swatch" style="background:' +
+                  RISK_COLORS[k] +
+                  '"></span>' +
+                  RISK_LABELS[k] +
+                  '</span><span class="amt" style="color:' +
+                  (d > 0 ? '#c0392b' : '#27ae60') +
+                  '">' +
+                  (d >= 0 ? '+' : '') +
+                  d.toFixed(1) +
+                  '</span></div>';
+              }
+              rows +=
+                '<div class="row tot"><span>net extra risk for the shortcut</span><span class="amt" style="color:' +
+                (dTot > 0 ? '#c0392b' : '#27ae60') +
+                '">' +
+                (dTot >= 0 ? '+' : '') +
+                dTot.toFixed(1) +
+                '</span></div>';
+              callout.innerHTML = rows;
+              return;
+            }
+            if (sel == null) {
+              callout.innerHTML = '<span class="muted">Click a step (bar or route) to see why it cost what it did.</span>';
+              return;
+            }
+            const p = main.path[sel];
+            const b = riskBreakdown(FIELD.get(key(p.col, p.row)), DEFAULT_APPETITE);
+            const tot = RISK_KEYS.reduce((s, k) => s + b[k], 0);
+            let rows = '<div style="font-weight:700;margin-bottom:3px">Step ' + sel + ' — cost ' + tot.toFixed(1) + '</div>';
+            for (const k of RISK_KEYS) {
+              rows +=
+                '<div class="row"><span><span class="swatch" style="background:' +
+                RISK_COLORS[k] +
+                '"></span>' +
+                RISK_LABELS[k] +
+                '</span><span class="amt">' +
+                b[k].toFixed(1) +
+                '</span></div>';
+            }
+            callout.innerHTML = rows;
+          }
+          function update() {
+            buildStepsSelection();
+            renderMap();
+            showCallout();
+          }
+          function buildStepsSelection() {
+            [...stepsEl.children].forEach((el, i) => el.classList.toggle('sel', i === sel));
+          }
+          return {
+            init(sec) {
+              canvas = sec.querySelector('#h3Canvas');
+              ctx = canvas.getContext('2d');
+              stepsEl = sec.querySelector('#h3Steps');
+              callout = sec.querySelector('#h3Callout');
+              compareChk = sec.querySelector('#h3Compare');
+              const o = originFor(canvas, SIZE);
+              ox = o.ox;
+              oy = o.oy;
+              main = planRoute({ appetite: DEFAULT_APPETITE, riskScale: 1, distScale: 1 });
+              const tolerant = Object.assign({}, DEFAULT_APPETITE, { human: 0.95 });
+              bolder = planRoute({ appetite: tolerant, riskScale: 1, distScale: 1 });
+              sel = null;
+              compare = false;
+              buildSteps();
+              compareChk.addEventListener('change', () => {
+                compare = compareChk.checked;
+                if (compare) sel = null;
+                update();
+              });
+              canvas.addEventListener('click', (ev) => {
+                const [px, py] = canvasXY(canvas, ev);
+                const cell = cellAtPixel(px, py, ox, oy, SIZE);
+                if (!cell) return;
+                const idx = main.path.findIndex((p) => p.col === cell.col && p.row === cell.row);
+                if (idx >= 0) {
+                  sel = idx;
+                  compare = false;
+                  compareChk.checked = false;
+                  update();
+                }
+              });
+              update();
+            },
+            show() {
+              update();
+            },
+          };
+        })());
+
+        /* ── Payoff tracker: dashed promise → solid proven, by slide order ── */
+        const tracker = document.getElementById('payoff-tracker');
+        let proofIndex = {}; // payoff key -> slide index of its proof
+        let bottomLineIndex = 1;
+        function indexBuild() {
+          const sections = document.querySelectorAll('.reveal .slides > section');
+          sections.forEach((sec, i) => {
+            if (sec.id === 's-bottomline') bottomLineIndex = i;
+            const proves = sec.getAttribute('data-proves');
+            if (proves) proofIndex[proves] = i;
+          });
+        }
+        function updateTracker(curIndex) {
+          if (curIndex >= bottomLineIndex) tracker.classList.add('visible');
+          else tracker.classList.remove('visible');
+          tracker.querySelectorAll('.pf').forEach((pf) => {
+            const k = pf.getAttribute('data-pf');
+            const was = pf.classList.contains('proven');
+            const now = proofIndex[k] != null && curIndex >= proofIndex[k];
+            pf.classList.toggle('proven', now);
+            if (now && !was) {
+              pf.classList.add('just-proven');
+              setTimeout(() => pf.classList.remove('just-proven'), 500);
+            }
+          });
+        }
+
+        /* ── Lifecycle wiring ── */
+        function initAll() {
+          for (const id in Widgets) {
+            const sec = document.getElementById(id);
+            if (sec && !Widgets[id]._inited) {
+              try {
+                Widgets[id].init && Widgets[id].init(sec);
+              } catch (e) {
+                console.error('widget init failed:', id, e);
+              }
+              Widgets[id]._inited = true;
+            }
+          }
+        }
+        function callShow(sec) {
+          if (sec && Widgets[sec.id] && Widgets[sec.id].show) {
+            try {
+              Widgets[sec.id].show(sec);
+            } catch (e) {
+              console.error('show failed:', sec.id, e);
+            }
+          }
+        }
+        function callHide(sec) {
+          if (sec && Widgets[sec.id] && Widgets[sec.id].hide) {
+            try {
+              Widgets[sec.id].hide(sec);
+            } catch (e) {}
+          }
+        }
+
+        Reveal.initialize({
+          width: 960,
+          height: 700,
+          margin: 0.045,
+          minScale: 0.2,
+          maxScale: 2.0,
+          hash: true,
+          slideNumber: 'c/t',
+          controls: true,
+          progress: true,
+          transition: 'slide',
+          backgroundTransition: 'none',
+          plugins: [RevealNotes],
+        }).then(() => {
+          indexBuild();
+          initAll();
+          const cur = Reveal.getCurrentSlide();
+          updateTracker(Reveal.getIndices().h);
+          callShow(cur);
+        });
+        Reveal.on('slidechanged', (event) => {
+          callHide(event.previousSlide);
+          updateTracker(event.indexh);
+          callShow(event.currentSlide);
+        });
+      })();
+    </script>
+  </body>
+</html>
