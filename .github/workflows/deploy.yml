@@ -46,6 +46,7 @@ jobs:
           mkdir -p page-dist/demo page-dist/docs
           cp -R dist/. page-dist/demo/
           cp docs/approaches.html page-dist/docs/index.html
+          cp -R docs/presentation page-dist/docs/presentation
           cp docs/gh-pages-index.html page-dist/index.html
 
       - name: Deploy to gh-pages
