@@ -235,6 +235,8 @@ export interface DefaultCycloneOptions {
   endTime?: number;
   /** Peak strength in [0,1]. Defaults to 1. */
   strength?: number;
+  /** Whether the cyclone starts switched on. Defaults to true. */
+  enabled?: boolean;
 }
 
 /**
@@ -253,6 +255,7 @@ export function createDefaultCyclone(
     startTime = 8 * 60,
     endTime = 16 * 60,
     strength = 1,
+    enabled = true,
   } = opts;
   const minSpan = Math.min(extent.width, extent.height);
   return {
@@ -267,6 +270,6 @@ export function createDefaultCyclone(
     maxWindRadiusKm: minSpan * 0.28,
     outerRadiusKm: minSpan * 0.75,
     strength,
-    enabled: true,
+    enabled,
   };
 }

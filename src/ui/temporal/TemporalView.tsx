@@ -15,8 +15,10 @@
  * (the live map's selectCellCost basis), pinned beneath the stack. Each slice is
  * coloured by the real `selectDisplayProfile` pipeline; by default it shows the
  * **temporal Δ** (day/night + any time-varying zones) on a transparent background
- * so the base shows through. The cyclone's effect is directional (it depends on
- * heading), so it shapes the COA routes rather than this per-cell shading.
+ * so the base shows through. The cyclone's risk impact is folded in too: it is
+ * directional, so a field cell (which has no heading) is shown at its **worst
+ * case — dead into the wind** (see {@link applyWorstCaseWind}), letting the stack
+ * glow and sweep as the storm passes when the weather is switched on.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
@@ -28,6 +30,7 @@ import { CRS, imageOverlay } from 'leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
 import type { TerrainRasterRequest } from './terrainRaster.worker';
 import {
+  applyWindRisk,
   applyZoneOffsets,
   cellRiskCost,
   clamp01,
@@ -35,9 +38,12 @@ import {
   RISK_LABELS,
   RISK_TYPES,
   speedModifiedProfile,
+  windAt,
+  windEffect,
 } from '@domain';
 import type {
   CostParams,
+  Cyclone,
   HexCell,
   HexGrid,
   RiskProfile,
@@ -231,6 +237,24 @@ function buildBase(
   return { geometry, baseNorm, deltaRef, metric };
 }
 
+/**
+ * The cyclone's risk impact on a field cell. A cell has no single heading, so we
+ * show the **worst case** — dead into the wind — which is where the storm bites
+ * hardest (cold most of all). Returns the profile unchanged when there is no wind
+ * there (cyclone off, calm eye, outside the field, or out of its time window).
+ */
+function applyWorstCaseWind(
+  profile: RiskProfile,
+  cyclone: Cyclone | null,
+  center: WorldPoint,
+  sliceMin: number,
+): RiskProfile {
+  if (!cyclone) return profile;
+  const w = windAt(cyclone, center, sliceMin);
+  if (!w) return profile;
+  return applyWindRisk(profile, windEffect({ x: -w.dir.x, y: -w.dir.y }, w));
+}
+
 /** One slice's geometry at `sliceMin` (temporal Δ or total risk). */
 function buildSlice(
   cells: readonly HexCell[],
@@ -239,6 +263,7 @@ function buildSlice(
   hourlyMode: HourlyMode,
   inset: number,
   info: BaseInfo,
+  cyclone: Cyclone | null,
 ): THREE.BufferGeometry {
   const n = cells.length;
   const vals = new Float32Array(n);
@@ -246,8 +271,10 @@ function buildSlice(
   for (let ci = 0; ci < n; ci++) {
     const cell = cells[ci];
     if (!cell) continue;
-    const full = selectDisplayProfile(st, cell.id, cell.vertices);
-    if (!full) continue;
+    const base = selectDisplayProfile(st, cell.id, cell.vertices);
+    if (!base) continue;
+    // Fold the weather's (worst-case) risk impact into this slice's value.
+    const full = applyWorstCaseWind(base, cyclone, cell.center, sliceMin);
     if (hourlyMode === 'temporal') {
       const baseline = noTemporalProfile(inputs, cell);
       vals[ci] = baseline ? info.metric(full) - info.metric(baseline) : 0;
@@ -912,6 +939,7 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
   const terrain = useBlockbusterStore((s) => s.terrain);
   const plan = useBlockbusterStore((s) => s.plan);
   const seed = useBlockbusterStore((s) => s.seed);
+  const cyclone = useBlockbusterStore((s) => s.cyclone);
 
   const [layout, setLayout] = useState<Layout>('stack');
   const [intervalMin, setIntervalMin] = useState(15);
@@ -1030,7 +1058,7 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
   const cache = useMemo(
     () => new Map<number, THREE.BufferGeometry>(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [baseInfo, hourlyMode, inset, intervalMin],
+    [baseInfo, hourlyMode, inset, intervalMin, cyclone],
   );
   useEffect(() => {
     const m = cache;
@@ -1047,13 +1075,32 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
       const index = windowStart + j;
       let geometry = cache.get(index);
       if (!geometry) {
-        geometry = buildSlice(cells, inputs, index * intervalMin, hourlyMode, inset, baseInfo);
+        geometry = buildSlice(
+          cells,
+          inputs,
+          index * intervalMin,
+          hourlyMode,
+          inset,
+          baseInfo,
+          cyclone,
+        );
         cache.set(index, geometry);
       }
       out.push({ index, geometry });
     }
     return out;
-  }, [cache, windowStart, windowEff, cells, inputs, baseInfo, hourlyMode, inset, intervalMin]);
+  }, [
+    cache,
+    windowStart,
+    windowEff,
+    cells,
+    inputs,
+    baseInfo,
+    hourlyMode,
+    inset,
+    intervalMin,
+    cyclone,
+  ]);
 
   // Drop slices that scrolled well outside the window.
   useEffect(() => {
@@ -1349,7 +1396,9 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
         <p className="temporal-note">
           Only the {windowEff}-layer window (+buffer) is computed &amp; cached; slices build on the
           fly as you scroll. Permanent base anchors the colour scale and sits beneath the stack —
-          switch it off to drop the live Leaflet map onto that plane.
+          switch it off to drop the live Leaflet map onto that plane. When the weather is switched
+          on (Extra Factors tab), its risk impact sweeps through here at the worst case — dead into
+          the wind.
         </p>
       </div>
 

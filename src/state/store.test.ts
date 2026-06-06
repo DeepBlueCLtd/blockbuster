@@ -89,22 +89,22 @@ describe('store — extra-risk zones', () => {
     expect(store.getState().zoneRiskType).toBe('heat');
   });
 
-  it('seeds a default cyclone on every generated world (no default zones)', () => {
+  it('seeds a default cyclone, switched off, on every generated world (no default zones)', () => {
     store.getState().regenerate(1);
     expect(store.getState().zones).toHaveLength(0);
     const cyclone = store.getState().cyclone;
     expect(cyclone?.id).toBe('default-cyclone');
-    expect(cyclone?.enabled).toBe(true);
+    expect(cyclone?.enabled).toBe(false); // weather is opt-in
     expect(cyclone?.outerRadiusKm).toBeGreaterThan(0);
   });
 
   it('toggles the cyclone (weather) on and off', () => {
     store.getState().regenerate(1);
-    expect(store.getState().cyclone?.enabled).toBe(true);
-    store.getState().toggleCyclone();
     expect(store.getState().cyclone?.enabled).toBe(false);
     store.getState().toggleCyclone();
     expect(store.getState().cyclone?.enabled).toBe(true);
+    store.getState().toggleCyclone();
+    expect(store.getState().cyclone?.enabled).toBe(false);
   });
 
   it('enables day/night on every generated world, re-enabling it on regenerate', () => {
