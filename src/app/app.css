@@ -493,6 +493,35 @@ button:hover {
   margin: 0 0 4px;
 }
 
+.inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.inspector-header h2 {
+  margin: 0;
+}
+
+.inspector-close {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+  padding: 0 4px;
+  border-radius: 6px;
+}
+
+.inspector-close:hover {
+  color: var(--accent);
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .cell-biome {
   margin: 0 0 8px;
   font-size: 12px;
