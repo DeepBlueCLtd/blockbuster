@@ -1175,20 +1175,25 @@
           let canvas, ctx, slider, label, ox, oy;
           const SIZE = 18;
           function render() {
-            const t = +slider.value / 100; // 0 = speed, 1 = safety
+            const t = +slider.value / 100; // 0 = speed (tolerant), 1 = safety (averse)
             label.textContent = t < 0.4 ? 'speed' : t > 0.6 ? 'safety' : 'balanced';
-            // faint family of candidate routes across the spectrum
+            // "speed vs safety" sweeps a uniform risk appetite: tolerant routes cut
+            // short through the hazards, averse ones detour around them.
+            const appetiteFor = (u) => {
+              const a = 1 - u * 0.92; // speed end ≈ risk-free (cuts straight through)
+              return { animals: a, cold: a, heat: a, water: a, human: a };
+            };
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawField(ctx, ox, oy, SIZE);
+            // faint family of candidate routes across the spectrum
             for (let i = 0; i <= 4; i++) {
-              const tt = i / 4;
-              const r = planRoute({ riskScale: 0.2 + tt * 2.6, distScale: 1.5 - tt * 0.9 });
-              ctx.globalAlpha = 0.18;
+              const r = planRoute({ appetite: appetiteFor(i / 4) });
+              ctx.globalAlpha = 0.16;
               strokeRoute(ctx, r.path, ox, oy, SIZE, '#ffffff', 2);
               ctx.globalAlpha = 1;
             }
             // the highlighted pick at the slider position
-            const pick = planRoute({ riskScale: 0.2 + t * 2.6, distScale: 1.5 - t * 0.9 });
+            const pick = planRoute({ appetite: appetiteFor(t) });
             strokeRoute(ctx, pick.path, ox, oy, SIZE, '#0f3460', 4);
             marker(ctx, START, ox, oy, SIZE, '#27ae60', 'A');
             marker(ctx, GOAL, ox, oy, SIZE, '#c0392b', 'B');
