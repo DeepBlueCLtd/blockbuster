@@ -21,7 +21,11 @@
  * glow and sweep as the storm passes when the weather is switched on.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  RefObject,
+} from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -849,6 +853,19 @@ function TimeWheel({
     };
     inertiaRaf.current = requestAnimationFrame(step);
   };
+  // Arrow keys step one slice at a time when the reel is focused, matching the
+  // drag metaphor: up = later time, down = earlier.
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    stopInertia();
+    const dir = e.key === 'ArrowUp' ? 1 : -1;
+    const { interval, max } = cfgRef.current;
+    const slice = Math.round(curRef.current / interval);
+    const next = clampN((slice + dir) * interval, 0, max);
+    curRef.current = next;
+    setCurrentMin(next);
+  };
   // Wheel over the controller scrubs time a slice at a time; Ctrl+wheel zooms the
   // time step instead, staying on the current time. Native + non-passive so it can
   // preventDefault — which also stops page zoom and the native <select> cycling
@@ -905,10 +922,18 @@ function TimeWheel({
       </div>
       <div
         className="temporal-wheel-reel"
+        tabIndex={0}
+        role="slider"
+        aria-label="Time of day"
+        aria-valuemin={0}
+        aria-valuemax={maxMin}
+        aria-valuenow={Math.round(currentMin)}
+        aria-valuetext={formatTime(clampMin(Math.round(currentMin / intervalMin) * intervalMin))}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
+        onKeyDown={onKeyDown}
       >
         <div className="temporal-wheel-band" />
         {ticks.map((t) => (
@@ -921,7 +946,7 @@ function TimeWheel({
           </div>
         ))}
       </div>
-      <div className="temporal-wheel-hint">drag ↕ or scroll · ctrl-scroll = zoom step · flick to spin</div>
+      <div className="temporal-wheel-hint">drag ↕ or scroll · ↑/↓ keys when focused · ctrl-scroll = zoom step · flick to spin</div>
     </div>
   );
 }
