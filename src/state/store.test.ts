@@ -222,6 +222,53 @@ describe('store — hex-size decoupling', () => {
     }
   });
 
+  it('keeps waypoints in roughly the same place when the hex size changes', () => {
+    vi.useFakeTimers();
+    try {
+      const store = createBlockbusterStore(createMockEngine());
+      store.getState().regenerate(1);
+
+      const before = store.getState();
+      const oldGrid = before.grid;
+      expect(oldGrid).not.toBeNull();
+      if (!oldGrid) return;
+      const oldIds = before.waypoints;
+      const oldCenters = oldIds.map((id) => oldGrid.get(id)?.center);
+      expect(oldIds.length).toBeGreaterThanOrEqual(2);
+      expect(oldCenters.every(Boolean)).toBe(true);
+
+      // Shrink the hexes to a quarter of their size. Stored as (q,r) ids, the
+      // waypoints would otherwise collapse hard toward the origin; instead they
+      // should be re-anchored by position and stay put.
+      const newSize = 0.6;
+      store.getState().setHexSize(newSize);
+
+      const after = store.getState();
+      const newGrid = after.grid;
+      expect(newGrid).not.toBeNull();
+      if (!newGrid) return;
+
+      // Same number of waypoints, re-anchored onto different cells (a much
+      // smaller hex needs a far larger q,r to sit at the same world point).
+      expect(after.waypoints).toHaveLength(oldIds.length);
+      expect(after.waypoints).not.toEqual(oldIds);
+
+      // Each waypoint's new world centre is within one new-hex circumradius
+      // (= size) of where it was — i.e. it barely moved.
+      after.waypoints.forEach((id, i) => {
+        const newCenter = newGrid.get(id)?.center;
+        const old = oldCenters[i];
+        expect(newCenter).toBeDefined();
+        expect(old).toBeDefined();
+        if (!newCenter || !old) return;
+        const dist = Math.hypot(newCenter.x - old.x, newCenter.y - old.y);
+        expect(dist).toBeLessThanOrEqual(newSize + 1e-6);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rebuilds live on every step but coalesces the replan to a single run', () => {
     vi.useFakeTimers();
     try {

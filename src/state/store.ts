@@ -75,6 +75,55 @@ function defaultWaypoints(grid: HexGrid): CellId[] {
 }
 
 /**
+ * The cell in `grid` nearest to a world point: the cell that contains it when the
+ * point lies inside the grid, otherwise the cell with the closest centre (so a
+ * point just over the ragged border still resolves to a real cell rather than
+ * vanishing). Used to re-anchor waypoints by position when the grid is rebuilt at
+ * a new hex size.
+ */
+function nearestCell(grid: HexGrid, point: WorldPoint): CellId | undefined {
+  const inside = grid.pointToCell(point);
+  if (inside) return inside;
+  let best: CellId | undefined;
+  let bestDistSq = Infinity;
+  for (const cell of grid.cells) {
+    const dx = cell.center.x - point.x;
+    const dy = cell.center.y - point.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      best = cell.id;
+    }
+  }
+  return best;
+}
+
+/**
+ * Re-anchor waypoints from `oldGrid` onto `newGrid` by world position. Waypoints
+ * are stored as `(q, r)` cell ids, but the same id sits at a different world
+ * point once the hex size changes — so keeping the id verbatim would let
+ * waypoints slide toward (smaller hexes) or away from (larger hexes) the origin
+ * as the cells resize. Mapping each waypoint through its old-grid world centre
+ * into the nearest cell of the new grid keeps it roughly where the analyst put
+ * it. Order is preserved; if two waypoints land on the same new cell (possible
+ * when hexes grow a lot), the later duplicate is dropped.
+ */
+function remapWaypoints(waypoints: CellId[], oldGrid: HexGrid, newGrid: HexGrid): CellId[] {
+  const out: CellId[] = [];
+  const seen = new Set<CellId>();
+  for (const id of waypoints) {
+    const center = oldGrid.get(id)?.center;
+    if (!center) continue;
+    const remapped = nearestCell(newGrid, center);
+    if (remapped && !seen.has(remapped)) {
+      seen.add(remapped);
+      out.push(remapped);
+    }
+  }
+  return out;
+}
+
+/**
  * Factory so tests can spin up isolated stores with a custom or fake
  * {@link Engine}. The app uses the default singleton below.
  */
@@ -120,7 +169,17 @@ export function createBlockbusterStore(engine: Engine) {
           overrides: {},
         });
       }
-      let waypoints = s.waypoints.filter((id) => grid.get(id));
+      // Waypoints are stored as (q, r) cell ids. A hex-size change rebuilds the
+      // grid at a new cell size, so the same id maps to a different world point;
+      // re-anchor each waypoint by its old world position into the nearest new
+      // cell so it stays roughly in place instead of drifting toward/away from
+      // the origin. A pure regenerate (unchanged hex size) leaves positions put,
+      // so the ids are kept directly — only those outside the rebuilt grid drop.
+      const oldGrid = s.grid;
+      let waypoints =
+        oldGrid && oldGrid.layout.size !== grid.layout.size
+          ? remapWaypoints(s.waypoints, oldGrid, grid)
+          : s.waypoints.filter((id) => grid.get(id));
       if (waypoints.length < 2) waypoints = defaultWaypoints(grid);
 
       // Analyst-drawn zones are pinned to the basemap they were drawn on, so they
