@@ -130,7 +130,9 @@ export function createBlockbusterStore(engine: Engine) {
       // re-seeded on every rebuild so time matters from the first frame.
       const basemapChanged = useSeed !== s.seed;
       const zones = basemapChanged ? [] : s.zones;
-      const cyclone = createDefaultCyclone(s.extent);
+      // Seeded switched off: the analyst opts the weather in (Extra Factors), so it
+      // never silently shapes routes or clutters the map until they ask for it.
+      const cyclone = createDefaultCyclone(s.extent, { enabled: false });
 
       set({
         seed: useSeed,
@@ -192,7 +194,7 @@ export function createBlockbusterStore(engine: Engine) {
       showRiskBars: false,
       showRiskStacks: false,
       showRoutes: false,
-      showWind: true,
+      showWind: false,
       temporalView: false,
 
       regenerate: (seed) => {

@@ -14,7 +14,7 @@ export function WindLegend() {
   const displayTime = useBlockbusterStore((s) => s.displayTime);
   if (!showWind || !cyclone) return null;
 
-  const active = cycloneEyeAt(cyclone, displayTime) !== null;
+  const inWindow = cyclone.enabled && cycloneEyeAt(cyclone, displayTime) !== null;
 
   return (
     <div className="map-legend map-legend--wind">
@@ -30,9 +30,11 @@ export function WindLegend() {
       <span className="legend-item">
         <i style={{ background: '#c62828' }} /> Headwind (hinders)
       </span>
-      {!active && (
+      {!cyclone.enabled ? (
+        <span className="legend-item">weather off — enable it on the Extra Factors tab</span>
+      ) : !inWindow ? (
         <span className="legend-item">cyclone inactive at {formatTime(displayTime)}</span>
-      )}
+      ) : null}
     </div>
   );
 }

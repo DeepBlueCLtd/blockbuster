@@ -10,6 +10,7 @@ export function CellInspector() {
   const setOverride = useBlockbusterStore((s) => s.setOverride);
   const resetOverride = useBlockbusterStore((s) => s.resetOverride);
   const toggleWaypoint = useBlockbusterStore((s) => s.toggleWaypoint);
+  const selectCell = useBlockbusterStore((s) => s.selectCell);
 
   // No selection: render nothing so the panel doesn't consume space.
   if (!selectedCellId) return null;
@@ -24,7 +25,20 @@ export function CellInspector() {
 
   return (
     <div className="inspector">
-      <h2>Cell {selectedCellId}</h2>
+      <div className="inspector-header">
+        <h2>Cell {selectedCellId}</h2>
+        {/* Always-available deselect — handy when a waypoint marker sits on the
+            cell and intercepts the toggle-click on the map. */}
+        <button
+          type="button"
+          className="inspector-close"
+          title="Close (deselect cell)"
+          aria-label="Close cell editor"
+          onClick={() => selectCell(null)}
+        >
+          ×
+        </button>
+      </div>
       {sample ? (
         <p className="cell-biome">
           {sample.biome} · {sample.temperature.toFixed(0)}°C · {Math.round(sample.elevation)} m
