@@ -495,7 +495,7 @@
           <div class="payoff-grid">
             <div class="payoff-card lead">
               <h3>🛡 Defensible</h3>
-              <p>Every route shows <em>why</em> it was chosen — auditable and repeatable.</p>
+              <p>Every route shows <em>why</em> it was chosen — the assumptions are explicit, auditable and repeatable.</p>
             </div>
             <div class="payoff-card">
               <h3>⑂ Options</h3>
@@ -667,7 +667,7 @@
         <section id="s-speed" data-proves="speed">
           <h2>Proof ② — fast &amp; consistent</h2>
           <p>
-            With a cost on every step, "find the cheapest route" is a <strong>solved
+            With a cost on every step, finding a cheapest route is a <strong>well-understood
             problem</strong>. The computer weighs thousands of paths in a blink —
           </p>
           <div class="stage">
@@ -683,7 +683,11 @@
             is weighing at that moment; lightly-shaded cells are options already considered. It
             tries many candidate routes, then snaps to the cheapest (white). Contrast with hours
             of manual map-reading, and stress determinism: identical inputs always reproduce the
-            identical plan. Fills the Speed badge.
+            identical plan. If anyone asks whether it is <em>provably</em> optimal: on a static
+            map, yes — A* returns the cheapest leg; once time-varying modifiers (day/night, storm,
+            wind) or Dynamic speed are active it is a high-quality time-aware heuristic, not a
+            guarantee. The determinism claim — same inputs, same answer — always holds. Fills the
+            Speed badge.
           </aside>
         </section>
 
@@ -735,7 +739,8 @@
             and shows exactly which risks cost what. Then tick "compare with the bolder option":
             the faster route overlays (dashed) and you see precisely how much extra risk it
             trades for the distance saved. That is defensibility — you can always answer "why
-            this and not that?". Fills the Defensible badge (the red one).
+            this and not that?" — under your stated assumptions. The tool makes the assumptions
+            visible; it doesn't certify them. Fills the Defensible badge (the red one).
           </aside>
         </section>
 
@@ -777,11 +782,12 @@
             falls, a road closes. Re-dial, re-plan, re-justify.
           </p>
           <p class="muted" style="margin-top: 2em">
-            Measure the risk → make the choice <strong>defensible</strong>.
+            The metrics don't make the decision — they make your decision <strong>explainable</strong>.
           </p>
           <aside class="notes">
-            Optional closer — trim first if short on time. Leave them with: the metrics don't
-            make the decision, they make your decision explainable and fast to revisit.
+            Optional closer — trim first if short on time. The honest line is now on the slide
+            itself — the metrics don't make the decision, they make your decision explainable.
+            Land it, then add the spoken coda: and fast to revisit as conditions change.
           </aside>
         </section>
       </div>

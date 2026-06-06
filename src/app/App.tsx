@@ -56,7 +56,18 @@ export function App() {
         <header className="side-header">
           <div>
             <h1>Blockbuster</h1>
-            <p className="tagline">Route risk through non-uniform space</p>
+            <p className="tagline">
+              Route risk through non-uniform space ·{' '}
+              <a
+                className="about-model-link"
+                href="../docs/#assumptions"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Risk scores are modelled judgements, not measurements — see Assumptions & Limitations"
+              >
+                About the model
+              </a>
+            </p>
           </div>
           <div className="side-header-actions">
             <button type="button" onClick={() => setTemporalView(true)}>
