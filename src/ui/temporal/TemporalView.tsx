@@ -943,9 +943,10 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
 
   const [layout, setLayout] = useState<Layout>('stack');
   const [intervalMin, setIntervalMin] = useState(15);
-  // Default into the journey window (default route departs 08:00, ~3 h) so the
-  // per-slice route highlight is visible on load.
-  const [currentMin, setCurrentMin] = useState(9 * 60);
+  // Start at the beginning of the scenario (00:00), matching the 2D map's time
+  // slider; scroll forward to reach the journey window (default route departs
+  // 08:00, ~3 h) where the per-slice route highlight appears.
+  const [currentMin, setCurrentMin] = useState(0);
   const [gridScroll, setGridScroll] = useState<GridScroll>('fixed');
   const [spacing, setSpacing] = useState(2.5);
   const [opacity, setOpacity] = useState(0.5);

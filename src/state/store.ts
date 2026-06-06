@@ -233,7 +233,9 @@ export function createBlockbusterStore(engine: Engine) {
       journeyParams: DEFAULT_JOURNEY_PARAMS,
       dayNight: DEFAULT_DAY_NIGHT,
       waypointWindows: [],
-      displayTime: DEFAULT_JOURNEY_PARAMS.startTime,
+      // The map time slider starts at the beginning of the scenario (00:00); the
+      // analyst scrubs forward from there (the journey itself departs at 08:00).
+      displayTime: 0,
 
       plan: null,
       planning: false,
