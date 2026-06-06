@@ -60,6 +60,7 @@ jobs:
           mkdir -p preview-dist/demo preview-dist/docs
           cp -R dist/. preview-dist/demo/
           cp docs/approaches.html preview-dist/docs/index.html
+          cp -R docs/presentation preview-dist/docs/presentation
           cp docs/gh-pages-index.html preview-dist/index.html
 
       # --- Deploy / clean up the preview -----------------------------------
