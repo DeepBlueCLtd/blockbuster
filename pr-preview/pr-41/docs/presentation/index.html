@@ -582,17 +582,17 @@
           </div>
           <p class="hint">
             <button id="s2Btn" class="kbd" style="cursor: pointer; font-size: 1em">
-              Measure it ▸
+              ↺ replay
             </button>
             &nbsp; The same machinery fits any factor you can name — risks, or success factors like
             distance.
           </p>
           <aside class="notes">
             The hinge, in three beats: NAME the factors, put a SCALE on each, then SCORE the
-            ground. "Vague danger" on the left becomes five measured numbers on the right — click
-            "Measure it". Name them in plain words: Animals, Cold, Heat, Thirst, Bandits (these
-            five colours recur on every later chart). Stress that this fits any factor you can
-            name, not only risks — distance is already a non-risk factor in the mix.
+            ground. "Vague danger" on the left resolves into five measured numbers as the slide
+            opens (↺ replay to re-run). Name them in plain words: Animals, Cold, Heat, Thirst,
+            Bandits (these five colours recur on every later chart). Stress that this fits any
+            factor you can name, not only risks — distance is already a non-risk factor in the mix.
           </aside>
         </section>
 
@@ -1218,7 +1218,7 @@
 
         // ── S2 (slide 4): fuzzy danger → five measured bars ──
         def('s-metrics', (function () {
-          let blob, bctx, barsEl, btn, profile;
+          let blob, bctx, barsEl, btn, profile, timer;
           function drawBlob() {
             const w = blob.width,
               h = blob.height;
@@ -1288,10 +1288,16 @@
               btn.addEventListener('click', reveal);
             },
             show() {
-              // reset to fuzzy each time the slide is entered
+              // reset to fuzzy, then auto-play: let the "danger" register for a
+              // beat, then resolve it into measured numbers — no click needed
+              clearTimeout(timer);
               revealed = false;
               drawBlob();
               buildBars(false);
+              timer = setTimeout(reveal, 850);
+            },
+            hide() {
+              clearTimeout(timer);
             },
           };
         })());
