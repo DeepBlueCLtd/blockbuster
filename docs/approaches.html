@@ -347,7 +347,7 @@
 <h2><span class="section-number">1.</span> What Blockbuster Does</h2>
 
 <p>
-  Blockbuster is a route-planning tool for traversing landscapes where different regions carry different kinds of danger. Given a terrain map, a set of waypoints, and an analyst's risk tolerances, it solves a variant of the <strong>shortest-path problem</strong> — except that "shortest" means <em>lowest total risk-adjusted cost</em>, not merely shortest distance.
+  Blockbuster is a route-planning tool for traversing landscapes where different regions carry different kinds of danger. Given a terrain map, a set of waypoints, and an analyst's risk tolerances, it solves a variant of the <strong>shortest-path problem</strong> — except that "shortest" means <em>lowest total risk-adjusted cost</em>, not merely shortest distance — where here "risk" means the analyst's encoded judgement, made explicit and repeatable, not an objective measurement of danger.
 </p>
 <p>
   The system produces <strong>three ranked Courses of Action (COAs)</strong>, each taking a distinct corridor through the terrain. This lets the analyst compare trade-offs quantitatively: one route might minimise heat exposure at the expense of higher bandit risk; another might be physically longer but avoids all elevated-risk cells.
@@ -574,7 +574,7 @@
 <ul style="margin: 0.5rem 0 1rem 1.5rem;">
   <li><strong>Fixed</strong> — one constant speed for the whole route.</li>
   <li><strong>Optimal</strong> — the planner tries several constant speeds (5, 10, … 30 km/h) and keeps whichever yields the cheapest route.</li>
-  <li><strong>Dynamic</strong> — speed is chosen <em>per cell</em>: at each step it takes whichever of the slow/fast extremes makes that cell cheaper to enter.</li>
+  <li><strong>Dynamic</strong> — speed is chosen <em>per cell</em>: at each step it takes whichever of the slow/fast extremes makes that cell cheaper to enter (a greedy per-cell choice — locally cheapest, not globally optimal).</li>
 </ul>
 <p>
   Speed matters because it is <strong>coupled to risk</strong>, not just to travel time. Moving fast helps you slip past predators and bandits — animal and human risk fall to <em>half</em> at top speed, because you are harder to catch — but it bites with wind-chill, so cold risk <em>doubles</em>. Heat and thirst are indifferent to pace. Faster also means you reach each cell sooner, which shifts where you land in the day/night cycle and the path of any moving hazard.
@@ -676,7 +676,7 @@
   <li><strong>Crosswind</strong> (90°) — no effect.</li>
 </ul>
 <p>
-  In between, the impact builds up <strong>exponentially</strong> as your heading lines up with the wind, so only a near-dead head- or tail-wind feels the full force. Because a headwind both <em>costs more</em> and <em>takes longer</em>, the planner will happily bend a route to take the wind on the beam or the back.
+  In between, the impact builds up <strong>exponentially</strong> as your heading lines up with the wind, so only a near-dead head- or tail-wind feels the full force. Because a headwind both <em>costs more</em> and <em>takes longer</em>, the planner will happily bend a route to take the wind on the beam or the back. A <strong>tailwind</strong>, by contrast, <em>lowers</em> a cell's cost below the straight-line floor — which is precisely why the distance heuristic the planner relies on (Section 10) is no longer strictly admissible once wind is active, so under wind A* is a high-quality heuristic rather than a guarantee.
 </p>
 
 <div class="widget">
@@ -718,10 +718,10 @@
 </p>
 <ul style="margin: 0.5rem 0 1rem 1.5rem;">
   <li><em>g(n)</em> is the accumulated cost from the start to cell <em>n</em> — movement plus the full modifier chain (Section 6) at the time the group reaches each cell</li>
-  <li><em>h(n)</em> is an admissible heuristic for the cost still to come: the straight-line distance to the goal times the distance weight</li>
+  <li><em>h(n)</em> is a distance-based heuristic for the cost still to come: the straight-line distance to the goal times the distance weight</li>
 </ul>
 <p>
-  Risk, the diversity penalty and every temporal effect only ever <em>add</em> cost on top of that straight-line floor, so the heuristic never overestimates and A* is guaranteed to return the optimal path for the given inputs. As it expands, A* threads the running <strong>arrival time</strong> through each cell, so day/night, moving hazards and wind are all evaluated for the moment the group would actually be there. On a hex grid of ~100 cells and degree 6, the search runs in well under 50 ms.
+  On a static map, risk and the diversity penalty only ever <em>add</em> cost on top of that straight-line floor, so this heuristic is admissible and A* returns the optimal leg. With temporal modifiers active, cost depends on arrival time, so the search is best understood as a high-quality time-aware heuristic rather than a proof of optimality — the state space it would need to guarantee that is (cell, time), not cell alone. As it expands, A* threads the running <strong>arrival time</strong> through each cell, so day/night, moving hazards and wind are all evaluated for the moment the group would actually be there. On a hex grid of ~100 cells and degree 6, the search runs in well under 50 ms.
 </p>
 
 <p>
@@ -773,7 +773,7 @@
 </div>
 
 <p>
-  Multi-waypoint routes are computed <strong>segment by segment</strong>: A* is run independently between each consecutive pair of waypoints, in the order given, and the sub-paths are concatenated. The analyst can optionally let the planner <strong>reorder</strong> the intermediate waypoints to cut total cost — a greedy nearest-neighbour pass (a lightweight travelling-salesman heuristic) that keeps the start fixed. Cells flagged <strong>impassable</strong> are hard-blocked and routed around; a waypoint stranded behind a block stays reachable, because the leg that needs it falls back to a passable path.
+  Multi-waypoint routes are computed <strong>segment by segment</strong>: A* is run independently between each consecutive pair of waypoints, in the order given, and the sub-paths are concatenated. The analyst can optionally let the planner <strong>reorder</strong> the intermediate waypoints to cut total cost — a greedy nearest-neighbour pass (a lightweight travelling-salesman heuristic) that keeps the start fixed. This is a lightweight heuristic, not a TSP solver: legs are routed independently, so the combined route carries no global visit-once guarantee and may revisit cells across legs. Cells flagged <strong>impassable</strong> are hard-blocked and routed around; a waypoint stranded behind a block stays reachable, because the leg that needs it falls back to a passable path.
 </p>
 
 <h3 style="margin-top:1.5rem;font-size:1.1rem;">Generating three diverse COAs</h3>
@@ -798,7 +798,7 @@
 </div>
 
 <p>
-  The three COAs are ranked by total cost. Each records a per-cell breakdown of risk contributions, enabling the detailed visual comparison described in the next section.
+  The three COAs are ranked by total cost. Each records a per-cell breakdown of risk contributions, enabling the detailed visual comparison described in the next section. COA <em>discovery</em> is therefore heuristic by design — the strategy biases, reuse penalties and overlap rejection above decide which corridors surface — but COA <em>ranking</em> is exact: every survivor is re-scored under the analyst's real settings, so the three totals are directly comparable.
 </p>
 
 <!-- ─────────────────────────────────────────── -->
@@ -856,7 +856,23 @@
 </div>
 
 <!-- ─────────────────────────────────────────── -->
-<h2><span class="section-number">13.</span> Glossary</h2>
+<h2 id="assumptions"><span class="section-number">13.</span> Assumptions &amp; Limitations</h2>
+
+<p>
+  Blockbuster is a <strong>model, not a measurement</strong>. The figures it optimises are encoded analyst judgement — made explicit and repeatable, but not objective readings of danger, and running them through arithmetic does not make them true. Read every total with that in mind:
+</p>
+<ul style="margin: 0.5rem 0 1rem 1.5rem;">
+  <li><strong>Risk scores are modelled judgements.</strong> Each cell's five channel values, and the appetite weights applied to them, are assumptions an analyst chose — not measurements. "Why is bandit risk 0.6?" is always a fair question; the honest answer is "because someone set it there", and the tool keeps that setting visible and editable rather than hiding it.</li>
+  <li><strong>The multipliers are tunable conventions.</strong> The day/night ×0.5 / ×1.5 factors, the deep-sleep town exception, the speed–risk coupling and the wind head/tail effects are design choices calibrated for plausibility, not measured constants.</li>
+  <li><strong>Routing has no visit-once guarantee.</strong> Multi-waypoint routes are independent legs concatenated (Section 10), so the combined route may revisit cells — it is multi-leg shortest path, not a travelling-salesman tour.</li>
+  <li><strong>Optimality is conditional.</strong> A* returns the optimal leg on a static map, but once temporal modifiers or Dynamic speed are active the planner is a high-quality heuristic rather than a proof of optimality (Section 10), and the three COAs come from a deliberately heuristic fan-out — diverse and honestly re-scored, not optimal-under-constraint.</li>
+</ul>
+<p>
+  What the architecture <em>does</em> earn is <strong>auditability and reproducibility</strong>: the planner and the charts share one cost function, and the same seed and inputs always reproduce the same plan. The payoff is not that the numbers are objectively right — it is that every assumption behind a route is explicit, inspectable and repeatable. Measurement makes the assumptions visible; it does not certify them.
+</p>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">14.</span> Glossary</h2>
 
 <table class="glossary-table">
   <tr><th>COA</th><td><strong>Course of Action</strong> — one of the three route options the system generates.</td></tr>
@@ -866,6 +882,7 @@
   <tr><th>Risk appetite</th><td>How tolerant the analyst is of each risk type, set via sliders (0 = avoid, 1 = tolerate).</td></tr>
   <tr><th>Waypoint</th><td>A cell the analyst selects as a destination — the route must pass through all waypoints.</td></tr>
   <tr><th>A* algorithm</th><td>A well-known shortest-path algorithm that finds the lowest-cost route through a graph.</td></tr>
+  <tr><th>Multi-leg routing</th><td>Consecutive waypoint pairs solved independently and concatenated; cells may be revisited across legs (no global visit-once guarantee).</td></tr>
   <tr><th>Perlin noise</th><td>A method for generating smooth, natural-looking random patterns (used for terrain).</td></tr>
   <tr><th>Web Worker</th><td>A browser feature that runs heavy calculations in a background thread, keeping the UI responsive.</td></tr>
   <tr><th>Debounce</th><td>Waiting briefly before acting on rapid repeated changes, so only the final state is processed.</td></tr>

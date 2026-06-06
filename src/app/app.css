@@ -173,6 +173,15 @@ body,
   color: var(--muted);
 }
 
+.about-model-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-model-link:hover {
+  text-decoration: underline;
+}
+
 button {
   font: inherit;
   padding: 6px 10px;

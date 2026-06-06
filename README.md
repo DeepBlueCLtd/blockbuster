@@ -1,9 +1,11 @@
 # blockbuster
-Travelling salesman route-finding through non-uniform space
+Multi-leg risk-aware shortest-path route-finding through non-uniform space
 
 # Objective
 
-Playground environment to experiment with interactions and visualisations regarding choice of routes through an environment.  A hex grid will be placed over the environment, and  Travelling Salesman Problem (TSP) techniques will be applied to generating optimal routes (COAs: Courses of Action) through the environment, generating permutations of routes that that travel between two or more cells in the grid.
+Playground environment to experiment with interactions and visualisations regarding choice of routes through an environment.  A hex grid will be placed over the environment, and **multi-leg risk-aware shortest-path** techniques will be applied to generate routes (COAs: Courses of Action) through the environment, routing between two or more chosen cells in the grid.
+
+_Origins: Blockbuster began as a Travelling Salesman Problem (TSP) playground. The delivered planner solves a sequence of risk-aware shortest-path problems between consecutive waypoints — concatenated legs rather than a global tour — which suits decision support better than provable tour optimality._
 
 The cost function in each hex cell will be a compsite of a number of risks, to include:
 - animals

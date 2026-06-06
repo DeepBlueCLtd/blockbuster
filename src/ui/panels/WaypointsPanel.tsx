@@ -125,6 +125,13 @@ export function WaypointsPanel() {
         <>
           <p className="panel-hint">
             Visited in this order. Reorder here, or drag a numbered marker on the map to move one.
+            {waypoints.length >= 3 ? (
+              <>
+                {' '}
+                Legs between consecutive waypoints are planned independently and may overlap, so
+                the route can revisit cells where two legs meet.
+              </>
+            ) : null}
           </p>
           <label className="optimise-order-toggle">
             <input
