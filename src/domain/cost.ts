@@ -71,21 +71,36 @@ export function movementCost(distanceKm: Km, params: CostParams): number {
   return distanceKm * params.distanceWeightKm;
 }
 
+// Exposure curve m(v) = a/v + b for the animal/human channels: convex and
+// decreasing, with m(SPEED_MIN)=1 and m(SPEED_MAX)=0.5 (halved at top speed).
+// Derived from the speed bounds so it retunes automatically if they change.
+const EXPOSURE_A = (0.5 * SPEED_MIN_KMH * SPEED_MAX_KMH) / (SPEED_MAX_KMH - SPEED_MIN_KMH);
+const EXPOSURE_B = 1 - EXPOSURE_A / SPEED_MIN_KMH;
+
 /**
  * Speed-dependent multiplier on a risk channel.
- * Faster travel: animals ×0.5, human ×0.5 at max speed (safer — harder to catch).
- * Faster travel: cold ×2.0 at max speed (wind chill / ice vulnerability).
- * Heat and water are unaffected.
+ *
+ * Animal and human (bandit) risk are *time-in-cell exposure* risks — the longer
+ * you dwell, the more exposed you are — so their multiplier follows a convex
+ * `~1/speed` curve: full strength at SPEED_MIN, halved at SPEED_MAX (faster is
+ * safer: less time exposed / harder to catch). Cold/wind-chill *grows* with speed,
+ * so it rises linearly (×2.0 at SPEED_MAX). Heat and water are unaffected.
+ *
+ * The convex exposure term competing with the rising cold term is what gives a
+ * cell's cost an *interior* minimum in (SPEED_MIN, SPEED_MAX). With purely linear
+ * modifiers the per-cell cost is linear in speed and its minimum is always an
+ * endpoint, so dynamic mode could only ever pick the slowest or fastest speed.
+ * See docs/spec/05-engine-risk.md.
  */
 export function speedRiskModifier(riskType: RiskType, speedKmh: number): number {
-  const t = (speedKmh - SPEED_MIN_KMH) / (SPEED_MAX_KMH - SPEED_MIN_KMH);
   switch (riskType) {
     case 'animals':
-      return 1 - 0.5 * t;
     case 'human':
-      return 1 - 0.5 * t;
-    case 'cold':
+      return EXPOSURE_A / speedKmh + EXPOSURE_B;
+    case 'cold': {
+      const t = (speedKmh - SPEED_MIN_KMH) / (SPEED_MAX_KMH - SPEED_MIN_KMH);
       return 1 + 1.0 * t;
+    }
     default:
       return 1;
   }

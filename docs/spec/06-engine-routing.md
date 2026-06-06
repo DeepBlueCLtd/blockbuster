@@ -47,6 +47,28 @@ Three parts, all present in the mock — port and improve:
 Each `Coa.steps[i]` must equal `riskCostBreakdown(risk[path[i]], params)` plus
 `movementCost` for the entering move; `totalCost` = Σ `stepCost`.
 
+### Dynamic per-cell speed
+
+When `journeyParams.speedMode === 'dynamic'` the planner chooses a **base travel
+speed per cell** that minimises that cell's entry cost (wind then scales the
+chosen base into the effective travel speed recorded on `Coa.steps[i].speedKmh`).
+Because the per-cell cost is now **convex** in speed (see
+[05 · Risk — speed-dependent cost](./05-engine-risk.md)), an *interior* speed can
+be the cheapest. v1 finds it by evaluating the entry cost across the discrete
+`CANDIDATE_SPEEDS` grid and taking the argmin — robust to the cold-clamp kinks
+that can break strict unimodality, and reusing `@domain/cost` rather than a
+private closed form. A finer grid, or an analytic (`dC/dv = 0`, `v* = √(A/B)`) /
+ternary refinement on the convex curve, can sharpen it. Evaluate the same
+speed-modified profile the charts read, so the breakdown reconciles with the
+chosen speed.
+
+> v1 only ever tested the two range endpoints `{min, max}` and kept the cheaper.
+> That is provably sufficient for a *linear* cost (the optimum is always an
+> endpoint), and is exactly why every recommendation came back as the slowest or
+> fastest speed. The convex cost **plus an interior solve** is what lets
+> intermediate speeds win — both halves are required; widening the search alone,
+> or convexifying alone, does nothing.
+
 ## Worker boundary
 
 `worker.ts` receives `RouteWorkerRequest`, calls `planRoutes`, posts
@@ -67,6 +89,13 @@ runs the core inline for unit tests.
 - Lowering appetite for a risk steers routes away from high-`that-risk` cells.
 - Deterministic for identical requests; completes well under a frame budget at
   ~100–300 cells.
+- **Dynamic speed:** for a cell whose convex cost minimum is interior, the chosen
+  base speed is strictly between `SPEED_MIN_KMH` and `SPEED_MAX_KMH` (not pinned to
+  an endpoint); endpoints appear only when the optimum genuinely clamps. Given a
+  constructed convex profile with a known `v*`, the selected speed matches it
+  (within the solver's tolerance/grid).
+- Per-cell `speedKmh` is the speed at which `steps[i].perRisk` was computed, so the
+  charts reconcile.
 
 ## Build in isolation
 
@@ -79,3 +108,8 @@ the worker wrapper is already done and shape-tested.
 - Impassable terrain (water/mountains) — hard block vs heavy cost? v1: heavy cost
   via the model; add a `passable` predicate later if needed.
 - Closed tours (return to start) — out of scope for v1.
+- Dynamic speed: v1 selects the per-cell speed by argmin over the discrete
+  `CANDIDATE_SPEEDS` grid (also used by `optimal` mode) — simple, robust to the
+  cold-clamp kinks, and bounds the per-cell work, but quantises recommendations to
+  5 km/h. A continuous analytic/ternary solve would smooth them; revisit if the
+  granularity proves too coarse.
