@@ -50,14 +50,17 @@ Each `Coa.steps[i]` must equal `riskCostBreakdown(risk[path[i]], params)` plus
 ### Dynamic per-cell speed
 
 When `journeyParams.speedMode === 'dynamic'` the planner chooses a **base travel
-speed per cell**, by minimising that cell's entry cost over
-`[SPEED_MIN_KMH, SPEED_MAX_KMH]` (wind then scales the chosen base into the
-effective travel speed recorded on `Coa.steps[i].speedKmh`). Because the per-cell
-cost is now **convex** in speed (see
-[05 · Risk — speed-dependent cost](./05-engine-risk.md)), solve for the *interior*
-optimum — analytically (`dC/dv = 0`, i.e. `v* = √(A/B)`) or by ternary search on
-the convex curve — then clamp to the range. Evaluate the same speed-modified
-profile the charts read, so the breakdown reconciles with the chosen speed.
+speed per cell** that minimises that cell's entry cost (wind then scales the
+chosen base into the effective travel speed recorded on `Coa.steps[i].speedKmh`).
+Because the per-cell cost is now **convex** in speed (see
+[05 · Risk — speed-dependent cost](./05-engine-risk.md)), an *interior* speed can
+be the cheapest. v1 finds it by evaluating the entry cost across the discrete
+`CANDIDATE_SPEEDS` grid and taking the argmin — robust to the cold-clamp kinks
+that can break strict unimodality, and reusing `@domain/cost` rather than a
+private closed form. A finer grid, or an analytic (`dC/dv = 0`, `v* = √(A/B)`) /
+ternary refinement on the convex curve, can sharpen it. Evaluate the same
+speed-modified profile the charts read, so the breakdown reconciles with the
+chosen speed.
 
 > v1 only ever tested the two range endpoints `{min, max}` and kept the cheaper.
 > That is provably sufficient for a *linear* cost (the optimum is always an
@@ -105,7 +108,8 @@ the worker wrapper is already done and shape-tested.
 - Impassable terrain (water/mountains) — hard block vs heavy cost? v1: heavy cost
   via the model; add a `passable` predicate later if needed.
 - Closed tours (return to start) — out of scope for v1.
-- Dynamic speed: continuous interior solve vs. a discrete grid (`CANDIDATE_SPEEDS`,
-  already used by `optimal` mode)? Continuous gives smooth recommendations; the
-  grid is simpler and bounds the per-cell work. Default to the analytic/ternary
-  solve since the cost is convex; keep the grid as a validation oracle in tests.
+- Dynamic speed: v1 selects the per-cell speed by argmin over the discrete
+  `CANDIDATE_SPEEDS` grid (also used by `optimal` mode) — simple, robust to the
+  cold-clamp kinks, and bounds the per-cell work, but quantises recommendations to
+  5 km/h. A continuous analytic/ternary solve would smooth them; revisit if the
+  granularity proves too coarse.

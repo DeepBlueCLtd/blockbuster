@@ -5,6 +5,8 @@ import {
   DEFAULT_JOURNEY_PARAMS,
   riskCostBreakdown,
   RISK_TYPES,
+  SPEED_MAX_KMH,
+  SPEED_MIN_KMH,
   speedModifiedProfile,
   toCellId,
 } from '@domain';
@@ -325,5 +327,43 @@ describe('routing core (cyclone wind)', () => {
     expect(eastHead.riskTotals.cold).toBeGreaterThan(westTail.riskTotals.cold);
     // A non-cold channel falls below its no-wind level on a tailwind.
     expect(westTail.riskTotals.human).toBeLessThan(eastNoWind.riskTotals.human);
+  });
+});
+
+describe('routing core (dynamic speed)', () => {
+  // Corridor cells carry competing cold (rises with speed) + human (time-exposure,
+  // falls with speed) risk, so each cell's cheapest speed is interior.
+  const scen = corridorScenario(8);
+  const fullSensParams: CostParams = {
+    appetite: { animals: 0, cold: 0, heat: 0, water: 0, human: 0 },
+    distanceWeightKm: 1,
+    riskWeight: 10,
+  };
+  const request: RouteRequest = {
+    grid: scen.grid,
+    risk: scen.risk,
+    params: fullSensParams,
+    waypoints: [scen.west, scen.east],
+    coaCount: 1,
+    journeyParams: { startTime: 8 * 60, speedMode: 'dynamic', fixedSpeedKmh: 15 },
+    dayNight: { enabled: false },
+    timeVaryingZones: [],
+    waypointWindows: [null, null],
+  };
+
+  it('selects intermediate speeds, not just the range extremes', () => {
+    const speeds = planRoutes(request).coas[0]!.steps.map((s) => s.speedKmh);
+    // Regression: the bug was every recommended speed pinned to SPEED_MIN/MAX.
+    expect(speeds.some((v) => v > SPEED_MIN_KMH && v < SPEED_MAX_KMH)).toBe(true);
+  });
+
+  it('reports a null whole-route speed (speed varies per cell)', () => {
+    expect(planRoutes(request).coas[0]!.speedKmh).toBeNull();
+  });
+
+  it('is deterministic for identical dynamic requests', () => {
+    const a = planRoutes(request).coas[0]!.steps.map((s) => s.speedKmh);
+    const b = planRoutes(request).coas[0]!.steps.map((s) => s.speedKmh);
+    expect(a).toEqual(b);
   });
 });

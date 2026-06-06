@@ -78,7 +78,13 @@ const MAX_OVERLAP = 0.8;
 const NO_USAGE: ReadonlyMap<CellId, number> = new Map();
 const NO_BLOCKS: ReadonlySet<CellId> = new Set();
 
-/** Six discrete speeds tried when optimising for the best constant speed. */
+/**
+ * Discrete candidate speeds: used as whole-route constant speeds in `optimal` mode
+ * and as the per-cell grid in `dynamic` mode. The per-cell cost is convex in speed
+ * (see `@domain/cost`), so its cheapest point can lie between the extremes; taking
+ * the argmin over this grid finds it without assuming a closed form (and is robust
+ * to the cold-clamp kinks). 5 km/h granularity — widen for finer recommendations.
+ */
 const CANDIDATE_SPEEDS = [5, 10, 15, 20, 25, 30] as const;
 
 interface Strategy {
@@ -384,12 +390,14 @@ function aStar(
       let newTimeMin: number;
 
       if (isDynamic) {
-        // Try SPEED_MIN and SPEED_MAX; pick whichever gives lower entry cost.
-        // Use cumulative time (not distance/speed) for accurate arrival estimate.
+        // Pick the candidate speed with the lowest entry cost. The cost is convex
+        // in speed (see @domain/cost), so the cheapest may be interior — hence the
+        // full grid, not just the extremes. Cumulative time (not distance/speed)
+        // gives an accurate arrival estimate.
         let bestBase = Infinity;
         let bestArrival = 0;
         let bestSpeed = SPEED_MIN_KMH;
-        for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
+        for (const s of CANDIDATE_SPEEDS) {
           const legTime = (legDistKm / s) * 60;
           const arr = temporal.journeyParams.startTime + legStartTimeMin + curTimeMin + legTime;
           const wind = windEffectFor(temporal, fromCenter, toCenter, arr);
@@ -567,14 +575,15 @@ function buildCoa(
       move = movementCost(legKm, params);
     }
 
-    // Base (chosen) travel speed. Dynamic mode picks whichever speed extreme
-    // minimises this cell's entry cost — evaluated with the wind in play, using a
-    // base-speed arrival estimate to look the wind up.
+    // Base (chosen) travel speed. Dynamic mode picks the candidate speed that
+    // minimises this cell's entry cost (convex in speed, so possibly interior) —
+    // evaluated with the wind in play, using a base-speed arrival estimate to look
+    // the wind up.
     let baseSpeed: number;
     if (isDynamic) {
       let bestCost = Infinity;
       baseSpeed = SPEED_MIN_KMH;
-      for (const s of [SPEED_MIN_KMH, SPEED_MAX_KMH]) {
+      for (const s of CANDIDATE_SPEEDS) {
         const legTime = i > 0 && legKm > 0 ? (legKm / s) * 60 : 0;
         const arr = temporal.journeyParams.startTime + cumulativeTimeMin + legTime;
         const wind = windEffectFor(temporal, prevCenter, cellCenter, arr);
