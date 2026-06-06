@@ -253,7 +253,6 @@
         width: 100%;
         border-radius: 4px 4px 0 0;
         height: 0;
-        transition: height 0.7s cubic-bezier(0.22, 1, 0.36, 1);
       }
       .bars5 .b .val {
         font-size: 12px;
@@ -1218,7 +1217,7 @@
 
         // ── S2 (slide 4): fuzzy danger → five measured bars ──
         def('s-metrics', (function () {
-          let blob, bctx, barsEl, btn, profile, timer;
+          let blob, bctx, barsEl, btn, profile, timer, raf;
           function drawBlob() {
             const w = blob.width,
               h = blob.height;
@@ -1245,8 +1244,11 @@
             bctx.fillText('“…looks dangerous?”', w / 2, h - 16);
             bctx.textAlign = 'left';
           }
-          function buildBars(revealed) {
+          // build the five bars at zero height (labels shown, values hidden)
+          function buildBars() {
             barsEl.innerHTML = '';
+            const fills = [],
+              vals = [];
             for (const k of RISK_KEYS) {
               const b = document.createElement('div');
               b.className = 'b';
@@ -1254,10 +1256,11 @@
               v.className = 'val';
               v.style.color = RISK_COLORS[k];
               v.textContent = profile[k].toFixed(2);
-              v.style.opacity = revealed ? '1' : '0';
+              v.style.opacity = '0';
               const fill = document.createElement('div');
               fill.className = 'fill';
               fill.style.background = RISK_COLORS[k];
+              fill.style.height = '0%';
               const lab = document.createElement('div');
               lab.className = 'lab';
               lab.textContent = RISK_LABELS[k];
@@ -1265,15 +1268,31 @@
               b.appendChild(fill);
               b.appendChild(lab);
               barsEl.appendChild(b);
-              requestAnimationFrame(() => {
-                fill.style.height = (revealed ? profile[k] * 100 : 0) + '%';
-              });
+              fills.push(fill);
+              vals.push(v);
             }
+            return { fills, vals };
           }
-          let revealed = false;
-          function reveal() {
-            revealed = true;
-            buildBars(true);
+          function showFuzzy() {
+            cancelAnimationFrame(raf);
+            drawBlob();
+            buildBars();
+          }
+          // steadily grow the bars to their measured values over `ms` (JS-driven,
+          // so the growth is genuinely gradual rather than a CSS-transition pop)
+          function grow(ms) {
+            cancelAnimationFrame(raf);
+            const { fills, vals } = buildBars();
+            const start = performance.now();
+            const tick = (now) => {
+              const p = Math.min(1, (now - start) / ms);
+              RISK_KEYS.forEach((k, i) => {
+                fills[i].style.height = (profile[k] * 100 * p).toFixed(2) + '%';
+                vals[i].style.opacity = String(p);
+              });
+              if (p < 1) raf = requestAnimationFrame(tick);
+            };
+            raf = requestAnimationFrame(tick);
           }
           return {
             init(sec) {
@@ -1283,21 +1302,18 @@
               btn = sec.querySelector('#s2Btn');
               // a representative dangerous patch: the bandit town
               profile = FIELD.get(key(8, 4));
-              drawBlob();
-              buildBars(false);
-              btn.addEventListener('click', reveal);
+              showFuzzy();
+              btn.addEventListener('click', () => grow(1500));
             },
             show() {
-              // reset to fuzzy, then auto-play: let the "danger" register for a
-              // beat, then resolve it into measured numbers — no click needed
+              // fuzzy "danger" first, then steadily resolve into numbers (no click)
               clearTimeout(timer);
-              revealed = false;
-              drawBlob();
-              buildBars(false);
-              timer = setTimeout(reveal, 1500);
+              showFuzzy();
+              timer = setTimeout(() => grow(1500), 300);
             },
             hide() {
               clearTimeout(timer);
+              cancelAnimationFrame(raf);
             },
           };
         })());
