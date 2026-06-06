@@ -198,6 +198,11 @@ body {
   cursor: ns-resize;
   touch-action: none;
 }
+.temporal-wheel-reel:focus-visible {
+  outline: none;
+  border-color: #2f6df0;
+  box-shadow: 0 0 0 2px rgba(47, 109, 240, 0.4);
+}
 .temporal-wheel-reel::before,
 .temporal-wheel-reel::after {
   content: '';
