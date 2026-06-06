@@ -13,9 +13,10 @@
  *
  * Faithful, not faked: the permanent **base** is the non-temporal terrain risk
  * (the live map's selectCellCost basis), pinned beneath the stack. Each slice is
- * coloured by the real `selectDisplayProfile` pipeline; by default it shows the
- * **temporal Δ** (day/night + any time-varying zones) on a transparent background
- * so the base shows through. The cyclone's risk impact is folded in too: it is
+ * coloured by the real `selectDisplayProfile` pipeline; it shows the
+ * **temporal-only** Δ (day/night + any time-varying zones) on a transparent
+ * background so the base shows through. The cyclone's risk impact is folded in
+ * too: it is
  * directional, so a field cell (which has no heading) is shown at its **worst
  * case — dead into the wind** (see {@link applyWorstCaseWind}), letting the stack
  * glow and sweep as the storm passes when the weather is switched on.
@@ -81,7 +82,6 @@ const DELTA_FRAC = 0.4; // composite temporal Δ reaches full colour at this fra
 
 type Layout = 'stack' | 'grid';
 type ShadeBy = 'composite' | RiskType;
-type HourlyMode = 'temporal' | 'total';
 type GridScroll = 'fixed' | 'inplace';
 
 /** The slice of store state `selectDisplayProfile` needs, minus the time. */
@@ -141,8 +141,9 @@ function heatThreeColor(t: number): THREE.Color {
   return new THREE.Color().setHSL(hue / 360, 0.72, 0.48);
 }
 
-// Temporal Δ: colour carries the sign, magnitude rides on per-cell alpha so a
-// "no change" cell is transparent and the backdrop shows through.
+// Temporal-only cost is a signed Δ from the permanent base: colour carries the
+// sign, magnitude rides on per-cell alpha so a "no change" cell is transparent
+// and the backdrop shows through.
 const TEMPORAL_POS = new THREE.Color(0.85, 0.1, 0.1);
 const TEMPORAL_NEG = new THREE.Color(0.1, 0.4, 0.85);
 const temporalColor = (t: number): THREE.Color => (t >= 0 ? TEMPORAL_POS : TEMPORAL_NEG);
@@ -205,7 +206,6 @@ function makeGridGeometry(
 
 interface BaseInfo {
   geometry: THREE.BufferGeometry;
-  baseNorm: number;
   deltaRef: number;
   metric: (p: RiskProfile) => number;
 }
@@ -234,7 +234,7 @@ function buildBase(
   const baseNorm = isComposite ? baseMax || 1 : 1;
   const deltaRef = isComposite ? (baseMax || 1) * DELTA_FRAC : 0.5;
   const geometry = makeGridGeometry(cells, inputs.extent, 1, (ci) => heatThreeColor((vals[ci] ?? 0) / baseNorm));
-  return { geometry, baseNorm, deltaRef, metric };
+  return { geometry, deltaRef, metric };
 }
 
 /**
@@ -255,12 +255,11 @@ function applyWorstCaseWind(
   return applyWindRisk(profile, windEffect({ x: -w.dir.x, y: -w.dir.y }, w));
 }
 
-/** One slice's geometry at `sliceMin` (temporal Δ or total risk). */
+/** One slice's geometry at `sliceMin` — the temporal-only Δ from the permanent base. */
 function buildSlice(
   cells: readonly HexCell[],
   inputs: ProfileInputs,
   sliceMin: number,
-  hourlyMode: HourlyMode,
   inset: number,
   info: BaseInfo,
   cyclone: Cyclone | null,
@@ -275,23 +274,16 @@ function buildSlice(
     if (!base) continue;
     // Fold the weather's (worst-case) risk impact into this slice's value.
     const full = applyWorstCaseWind(base, cyclone, cell.center, sliceMin);
-    if (hourlyMode === 'temporal') {
-      const baseline = noTemporalProfile(inputs, cell);
-      vals[ci] = baseline ? info.metric(full) - info.metric(baseline) : 0;
-    } else {
-      vals[ci] = info.metric(full);
-    }
+    const baseline = noTemporalProfile(inputs, cell);
+    vals[ci] = baseline ? info.metric(full) - info.metric(baseline) : 0;
   }
-  if (hourlyMode === 'temporal') {
-    return makeGridGeometry(
-      cells,
-      inputs.extent,
-      inset,
-      (ci) => temporalColor((vals[ci] ?? 0) / info.deltaRef),
-      (ci) => temporalAlpha((vals[ci] ?? 0) / info.deltaRef),
-    );
-  }
-  return makeGridGeometry(cells, inputs.extent, inset, (ci) => heatThreeColor((vals[ci] ?? 0) / info.baseNorm));
+  return makeGridGeometry(
+    cells,
+    inputs.extent,
+    inset,
+    (ci) => temporalColor((vals[ci] ?? 0) / info.deltaRef),
+    (ci) => temporalAlpha((vals[ci] ?? 0) / info.deltaRef),
+  );
 }
 
 /** Time-label textures, cached by the time string (limited set, no churn). */
@@ -633,7 +625,6 @@ function Scene({
   extent,
   spacing,
   opacity,
-  temporal,
   showPermanent,
   showGround,
   singleMap,
@@ -654,7 +645,6 @@ function Scene({
   extent: WorldExtent;
   spacing: number;
   opacity: number;
-  temporal: boolean;
   showPermanent: boolean;
   showGround: boolean;
   singleMap: boolean;
@@ -708,7 +698,7 @@ function Scene({
                 transparent
                 opacity={op}
                 side={THREE.DoubleSide}
-                depthWrite={!temporal && op >= 1}
+                depthWrite={false}
               />
             </mesh>
             {isCurrent && (
@@ -951,7 +941,6 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
   const [spacing, setSpacing] = useState(2.5);
   const [opacity, setOpacity] = useState(0.5);
   const [shadeBy, setShadeBy] = useState<ShadeBy>('composite');
-  const [hourlyMode, setHourlyMode] = useState<HourlyMode>('temporal');
   const [inset, setInset] = useState(0.9);
   const [showPermanent, setShowPermanent] = useState(true);
   const [showGround, setShowGround] = useState(true);
@@ -1059,7 +1048,7 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
   const cache = useMemo(
     () => new Map<number, THREE.BufferGeometry>(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [baseInfo, hourlyMode, inset, intervalMin, cyclone],
+    [baseInfo, inset, intervalMin, cyclone],
   );
   useEffect(() => {
     const m = cache;
@@ -1080,7 +1069,6 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
           cells,
           inputs,
           index * intervalMin,
-          hourlyMode,
           inset,
           baseInfo,
           cyclone,
@@ -1097,7 +1085,6 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
     cells,
     inputs,
     baseInfo,
-    hourlyMode,
     inset,
     intervalMin,
     cyclone,
@@ -1192,7 +1179,6 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
           extent={extent}
           spacing={spacing}
           opacity={opacity}
-          temporal={hourlyMode === 'temporal'}
           showPermanent={showPermanent}
           showGround={showGround}
           singleMap={singleMap}
@@ -1246,26 +1232,6 @@ export function TemporalView({ onClose }: { onClose?: () => void } = {}) {
             </button>
             <button type="button" className={layout === 'grid' ? 'on' : ''} onClick={() => setLayout('grid')}>
               Grid 5×4
-            </button>
-          </div>
-        </div>
-
-        <div className="temporal-row">
-          <span className="temporal-lbl">Hours show</span>
-          <div className="temporal-seg">
-            <button
-              type="button"
-              className={hourlyMode === 'temporal' ? 'on' : ''}
-              onClick={() => setHourlyMode('temporal')}
-            >
-              Temporal Δ
-            </button>
-            <button
-              type="button"
-              className={hourlyMode === 'total' ? 'on' : ''}
-              onClick={() => setHourlyMode('total')}
-            >
-              Total
             </button>
           </div>
         </div>
