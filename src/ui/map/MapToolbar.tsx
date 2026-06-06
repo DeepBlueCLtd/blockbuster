@@ -108,7 +108,7 @@ export function MapToolbar() {
           Hex {hexSize.toFixed(1)} km
           <input
             type="range"
-            min={0.6}
+            min={0.2}
             max={5}
             step={0.2}
             value={hexSize}
