@@ -8,14 +8,19 @@ body,
   margin: 0;
   height: 100%;
 }
-body {
-  background: #0b0e14;
-  color: #e6edf3;
-  font: 13px/1.45 system-ui, -apple-system, sans-serif;
-}
+/* The view's dark theme lives on .temporal-root, never on `body`. This file is
+   injected globally the first time the lazily-loaded view opens and is *not*
+   removed when it unmounts, so styling `body` here leaks into the 2D app — its
+   panel text would inherit the near-white colour and become illegible after the
+   3D view is closed. .temporal-root is fixed/inset:0, so it still fills the
+   viewport (in-app and in standalone temporal3d.html) and its descendants — the
+   panel, wheel and close button — inherit the light text. */
 .temporal-root {
   position: fixed;
   inset: 0;
+  background: #0b0e14;
+  color: #e6edf3;
+  font: 13px/1.45 system-ui, -apple-system, sans-serif;
 }
 .temporal-root canvas {
   display: block;

@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Blockbuster — 3D temporal view</title>
+    <!-- This standalone page's dark chrome lives here, not in temporal.css, so
+         the shared stylesheet leaves `body` untouched (see temporal.css). -->
+    <style>
+      body {
+        margin: 0;
+        background: #0b0e14;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
