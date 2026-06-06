@@ -46,7 +46,7 @@ export function RouteLayer() {
   const showRoutes = useBlockbusterStore((s) => s.showRoutes);
   const displayTime = useBlockbusterStore((s) => s.displayTime);
 
-  if (!grid || !showRoutes) return null;
+  if (!grid) return null;
 
   const toPoints = (ids: readonly CellId[]): LatLngExpression[] => {
     const points: LatLngExpression[] = [];
@@ -96,53 +96,59 @@ export function RouteLayer() {
 
   return (
     <>
-      {/* Route lines and their halos live in the topmost vector pane, so the COA
-          paths are never hidden by the hex shading or the risk pies. Waypoint
-          markers stay in markerPane above them. */}
-      <Pane name="routes" style={{ zIndex: 430 }}>
-        {/* All halos first, so none is painted over a neighbouring COA's line. */}
-        {routes.map((route) => (
-          <Polyline
-            key={`halo-${route.id}`}
-            positions={route.points}
-            interactive={false}
-            pathOptions={{
-              color: COA_HALO_COLOR,
-              weight: lineWeight(route.selected) + 4,
-              opacity: 0.6,
-            }}
-          />
-        ))}
-        {routes.map((route) => (
-          <Polyline
-            key={route.id}
-            positions={route.points}
-            pathOptions={{
-              color: route.color,
-              weight: lineWeight(route.selected),
-              // Every route is fully vivid; thickness alone marks the selection.
-              opacity: 1,
-            }}
-          />
-        ))}
-        {/* Current group position along each COA at displayTime. */}
-        {routes.map((route) =>
-          route.positionLatLng ? (
-            <CircleMarker
-              key={`pos-${route.id}`}
-              center={route.positionLatLng}
-              radius={8}
+      {/* Route lines and their halos are the optional Routes overlay (toolbar
+          toggle). They live in the topmost vector pane, so the COA paths are
+          never hidden by the hex shading or the risk pies. The waypoint markers
+          below stay in markerPane above them and are drawn unconditionally —
+          they are route inputs, not part of the overlay, so toggling Routes off
+          must never hide them. */}
+      {showRoutes && (
+        <Pane name="routes" style={{ zIndex: 430 }}>
+          {/* All halos first, so none is painted over a neighbouring COA's line. */}
+          {routes.map((route) => (
+            <Polyline
+              key={`halo-${route.id}`}
+              positions={route.points}
+              interactive={false}
               pathOptions={{
-                color: '#ffffff',
-                weight: 2,
-                fillColor: route.color,
-                fillOpacity: 1,
+                color: COA_HALO_COLOR,
+                weight: lineWeight(route.selected) + 4,
+                opacity: 0.6,
               }}
             />
-          ) : null,
-        )}
-      </Pane>
+          ))}
+          {routes.map((route) => (
+            <Polyline
+              key={route.id}
+              positions={route.points}
+              pathOptions={{
+                color: route.color,
+                weight: lineWeight(route.selected),
+                // Every route is fully vivid; thickness alone marks the selection.
+                opacity: 1,
+              }}
+            />
+          ))}
+          {/* Current group position along each COA at displayTime. */}
+          {routes.map((route) =>
+            route.positionLatLng ? (
+              <CircleMarker
+                key={`pos-${route.id}`}
+                center={route.positionLatLng}
+                radius={8}
+                pathOptions={{
+                  color: '#ffffff',
+                  weight: 2,
+                  fillColor: route.color,
+                  fillOpacity: 1,
+                }}
+              />
+            ) : null,
+          )}
+        </Pane>
+      )}
 
+      {/* Waypoints are always visible, independent of the Routes toggle. */}
       {waypoints.map((id, index) => {
         const center = grid.get(id)?.center;
         if (!center) return null;
