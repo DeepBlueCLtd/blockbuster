@@ -1,0 +1,2164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blockbuster — Approaches &amp; Algorithms</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --accent: #0f3460;
+    --accent2: #16213e;
+    --card-bg: #f8f9fa;
+    --border: #dee2e6;
+    --radius: 8px;
+    --risk-animals: #e67e22;
+    --risk-cold: #3498db;
+    --risk-heat: #e74c3c;
+    --risk-water: #1abc9c;
+    --risk-human: #9b59b6;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+    line-height: 1.7;
+    color: var(--fg);
+    background: var(--bg);
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: var(--accent2);
+    margin-bottom: 0.25rem;
+  }
+
+  h1 + p.subtitle {
+    color: #666;
+    font-size: 1.05rem;
+    margin-bottom: 2.5rem;
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    color: var(--accent);
+    margin-top: 3rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.3rem;
+  }
+
+  h2 .section-number {
+    color: #999;
+    font-weight: 400;
+    margin-right: 0.3em;
+  }
+
+  p { margin-bottom: 1rem; }
+
+  .widget {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin: 1.25rem 0 1.5rem;
+  }
+
+  .widget-title {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+    margin-bottom: 0.75rem;
+  }
+
+  canvas {
+    display: block;
+    border-radius: 4px;
+  }
+
+  label {
+    font-size: 0.9rem;
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+
+  input[type="range"] {
+    width: 100%;
+    margin: 0.25rem 0 0.5rem;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .slider-row label {
+    min-width: 100px;
+    margin: 0;
+    font-weight: 500;
+  }
+
+  .slider-row input[type="range"] {
+    flex: 1;
+    margin: 0;
+  }
+
+  .slider-row .value {
+    min-width: 3em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9rem;
+    color: #555;
+  }
+
+  .risk-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  .flex-row {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .flex-row > * { flex: 1; min-width: 200px; }
+
+  .bar-chart-container {
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+    align-items: flex-end;
+    height: 220px;
+    margin-top: 1rem;
+  }
+
+  .bar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .stacked-bar {
+    width: 60px;
+    display: flex;
+    flex-direction: column-reverse;
+    border-radius: 4px 4px 0 0;
+    overflow: hidden;
+  }
+
+  .stacked-bar .segment {
+    transition: height 0.3s ease;
+  }
+
+  .bar-label {
+    font-size: 0.8rem;
+    color: #555;
+    text-align: center;
+  }
+
+  .bar-cost {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .legend {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .note {
+    font-size: 0.85rem;
+    color: #777;
+    font-style: italic;
+    margin-top: 0.75rem;
+  }
+
+  .widget button {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .widget button:hover { background: var(--accent2); }
+
+  .widget button.secondary {
+    background: #fff;
+    color: var(--accent);
+  }
+
+  .widget button.secondary:hover { background: #eef2f6; }
+
+  .checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .checkbox-label input { margin: 0; }
+
+  .glossary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.75rem;
+  }
+
+  .glossary-table th,
+  .glossary-table td {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .glossary-table th {
+    font-weight: 600;
+    width: 160px;
+    color: var(--accent);
+  }
+
+  /* Flowchart styles */
+  .flowchart {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    margin: 1rem 0;
+  }
+
+  .flow-box {
+    background: white;
+    border: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    text-align: center;
+    max-width: 320px;
+  }
+
+  .flow-box.highlight {
+    background: #e8f4f8;
+    border-color: #2980b9;
+  }
+
+  .flow-arrow {
+    font-size: 1.4rem;
+    color: var(--accent);
+    line-height: 1.2;
+  }
+
+  .flow-label {
+    font-size: 0.75rem;
+    color: #888;
+  }
+
+  /* Temporal-factor widget helpers (speed, day/night, hazards, wind) */
+  .tag {
+    display: inline-block;
+    padding: 0.12rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #fff;
+    vertical-align: middle;
+  }
+
+  .widget-subhead {
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    justify-content: center;
+    margin: 0.25rem 0 0.5rem;
+  }
+
+  .chain .chain-box {
+    border: 2px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.82rem;
+    background: #fff;
+    white-space: nowrap;
+  }
+
+  .chain .chain-box.in { background: #eef4f8; }
+  .chain .chain-box.out { border-color: #27ae60; background: #eafaf1; }
+  .chain .chain-arrow { color: var(--accent); font-size: 1.1rem; }
+
+  @media (max-width: 600px) {
+    body { padding: 1rem; }
+    .flex-row { flex-direction: column; }
+    .bar-chart-container { gap: 1rem; }
+    .stacked-bar { width: 48px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Blockbuster — Approaches &amp; Algorithms</h1>
+<p class="subtitle">A guide to the mathematical models and techniques behind Blockbuster's route-planning engine.</p>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">1.</span> What Blockbuster Does</h2>
+
+<p>
+  Blockbuster is a route-planning tool for traversing landscapes where different regions carry different kinds of danger. Given a terrain map, a set of waypoints, and an analyst's risk tolerances, it solves a variant of the <strong>shortest-path problem</strong> — except that "shortest" means <em>lowest total risk-adjusted cost</em>, not merely shortest distance.
+</p>
+<p>
+  The system produces <strong>three ranked Courses of Action (COAs)</strong>, each taking a distinct corridor through the terrain. This lets the analyst compare trade-offs quantitatively: one route might minimise heat exposure at the expense of higher bandit risk; another might be physically longer but avoids all elevated-risk cells.
+</p>
+<p>
+  The pipeline has four core stages: <strong>terrain generation → hex grid overlay → risk assessment → route optimisation</strong>. Over that static map sits a <strong>time dimension</strong> — a departure time and travel speed, a day/night cycle, drifting hazards and a rotating cyclone — so the danger of a cell depends on <em>when</em> you reach it and <em>which way</em> you are heading. Each stage is deterministic — the same inputs always yield the same outputs. Everything runs client-side in the browser; no data leaves the machine.
+</p>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">2.</span> Procedural Terrain Generation</h2>
+
+<p>
+  The landscape is generated procedurally from a single <strong>seed</strong> integer. The seed initialises a deterministic pseudo-random number generator (<em>mulberry32</em>, a fast 32-bit PRNG), guaranteeing that the same seed always produces an identical map — useful for reproducibility and scenario sharing.
+</p>
+<p>
+  The underlying technique is <strong>Perlin noise</strong>, a gradient-based noise function that produces smooth, continuous variation across a 2D plane. At each integer lattice point, a pseudo-random gradient vector is assigned (via a deterministic hash — no sine functions, avoiding floating-point artefacts). The noise value at any point <em>(x, y)</em> is computed by interpolating the dot products of these gradients with the offset vectors, using Perlin's <strong>smootherstep</strong> function:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>smootherstep(t) = 6t<sup>5</sup> − 15t<sup>4</sup> + 10t<sup>3</sup></em>
+</p>
+<p>
+  This gives C² continuity (both the value and its first derivative are smooth), producing natural-looking contours rather than blocky artefacts.
+</p>
+<p>
+  To create terrain with features at multiple scales — large mountain ranges <em>and</em> small rocky outcrops — multiple octaves of Perlin noise are summed in a technique called <strong>Fractal Brownian Motion (FBM)</strong>. Each successive octave doubles the frequency and halves the amplitude:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>FBM(x, y) = Σ<sub>i=0</sub><sup>n−1</sup> &thinsp; 0.5<sup>i</sup> · perlin(2<sup>i</sup>x, &thinsp;2<sup>i</sup>y)</em>
+</p>
+<p>
+  The result is normalised to [0, 1]. Separate FBM fields (with different seed offsets) drive elevation, vegetation density, temperature, and other terrain attributes. The biome at each point — woodland, savannah, mountains, etc. — is classified from these continuous fields.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Try it — change the seed to generate a different landscape</div>
+  <div style="margin-bottom: 0.75rem;">
+    <label for="seedInput">Seed:</label>
+    <input type="range" id="seedInput" min="1" max="200" value="42" style="width:70%;vertical-align:middle;">
+    <span id="seedValue" style="font-variant-numeric:tabular-nums;">42</span>
+  </div>
+  <canvas id="terrainCanvas" width="600" height="260"></canvas>
+  <p class="note">Each pixel is computed from multi-octave Perlin noise (FBM). The same seed always produces the identical terrain field.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">3.</span> Hex Grid Tessellation</h2>
+
+<p>
+  The terrain is discretised into a <strong>hexagonal grid</strong> using <strong>axial coordinates (q, r)</strong> — a two-axis system where the implicit third coordinate is always <em>s = −q − r</em> (the "cube constraint"). This is mathematically elegant because hex distance reduces to a simple formula:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>d(a, b) = max(|Δq|, |Δr|, |Δs|)</em> &nbsp; where &nbsp; <em>Δs = −Δq − Δr</em>
+</p>
+<p>
+  The key advantage over a square grid is <strong>isotropy</strong>: all six neighbours of a hex cell are equidistant from its centre. In a square grid, the four diagonal neighbours are √2 ≈ 1.41 times further than the four cardinal neighbours, which introduces directional bias into any pathfinding algorithm. Hexagons eliminate this.
+</p>
+<p>
+  The grid uses <strong>pointy-top orientation</strong> with a configurable circumradius (centre-to-vertex distance). The default of 2.4 km yields approximately 100 cells over the standard 50 km × 30 km map extent — as specified in the project brief. The circumradius is adjustable live — down to 0.6 km for a much finer mesh — with the grid re-tessellating immediately and only the re-plan it triggers debounced.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Isotropy comparison — neighbour distances in square vs. hex grids</div>
+  <div class="flex-row">
+    <div>
+      <canvas id="squareCanvas" width="260" height="260"></canvas>
+      <p style="text-align:center;font-size:0.85rem;margin-top:0.5rem;"><strong>Square grid</strong> — diagonals are √2 ≈ 1.41× further</p>
+    </div>
+    <div>
+      <canvas id="hexCanvas" width="260" height="260"></canvas>
+      <p style="text-align:center;font-size:0.85rem;margin-top:0.5rem;"><strong>Hex grid</strong> — all neighbours equidistant</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">4.</span> Risk Assessment</h2>
+
+<p>
+  At each cell's centre, the terrain field is sampled to obtain continuous attributes — elevation, temperature, vegetation density, water proximity, and bandit activity. These are then mapped to <strong>five independent risk channels</strong>, each normalised to the range [0, 1]:
+</p>
+<ul style="margin: 0.5rem 0 1rem 1.5rem;">
+  <li><span class="risk-dot" style="background:var(--risk-animals)"></span> <strong>Animals</strong> — positively correlated with vegetation density</li>
+  <li><span class="risk-dot" style="background:var(--risk-cold)"></span> <strong>Cold</strong> — driven by elevation and low temperature</li>
+  <li><span class="risk-dot" style="background:var(--risk-heat)"></span> <strong>Heat</strong> — driven by high temperature</li>
+  <li><span class="risk-dot" style="background:var(--risk-water)"></span> <strong>Lack of water</strong> — inversely correlated with water proximity</li>
+  <li><span class="risk-dot" style="background:var(--risk-human)"></span> <strong>Humans</strong> — driven by bandit activity near settlements</li>
+</ul>
+<p>
+  Together these form the cell's <strong>risk profile</strong> — a five-dimensional vector. Analysts can override any channel if they possess better local intelligence; overridden values take precedence during route planning and are visually highlighted in the UI.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — terrain attributes mapped to risk channels</div>
+  <div class="flex-row" id="riskMappingWidget">
+    <div>
+      <p style="font-weight:600;margin-bottom:0.5rem;">Terrain properties</p>
+      <div class="slider-row">
+        <label>Vegetation</label>
+        <input type="range" min="0" max="100" value="70" data-terrain="vegetation">
+        <span class="value">0.70</span>
+      </div>
+      <div class="slider-row">
+        <label>Temperature</label>
+        <input type="range" min="0" max="100" value="20" data-terrain="temperature">
+        <span class="value">0.20</span>
+      </div>
+      <div class="slider-row">
+        <label>Elevation</label>
+        <input type="range" min="0" max="100" value="60" data-terrain="elevation">
+        <span class="value">0.60</span>
+      </div>
+      <div class="slider-row">
+        <label>Water nearby</label>
+        <input type="range" min="0" max="100" value="30" data-terrain="water">
+        <span class="value">0.30</span>
+      </div>
+      <div class="slider-row">
+        <label>Bandit activity</label>
+        <input type="range" min="0" max="100" value="10" data-terrain="bandit">
+        <span class="value">0.10</span>
+      </div>
+    </div>
+    <div>
+      <p style="font-weight:600;margin-bottom:0.5rem;">Resulting risk profile</p>
+      <canvas id="riskProfileCanvas" width="260" height="200"></canvas>
+    </div>
+  </div>
+  <p class="note">Drag the terrain sliders to see how landscape features drive each risk channel.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">5.</span> The Cost Function and Risk Appetite</h2>
+
+<p>
+  The cost of traversing a cell is a weighted sum across all five risk channels. The analyst controls a <strong>risk appetite</strong> per channel — a value in [0, 1] where 0 means "intolerant" and 1 means "fully tolerant." The <strong>sensitivity</strong> is simply the complement:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>sensitivity = 1 − appetite</em>
+</p>
+<p>
+  The per-channel cost contribution is then:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>cost<sub>channel</sub> = risk<sub>channel</sub> × sensitivity<sub>channel</sub> × w<sub>risk</sub></em>
+</p>
+<p>
+  where <em>w<sub>risk</sub></em> is a global risk weight (default 10). The total risk cost for the cell is the sum across all five channels. A separate <strong>movement cost</strong> — proportional to the physical distance in kilometres — is added to prevent routes from taking excessively long detours to avoid minor risks. The total step cost is therefore:
+</p>
+<p style="text-align: center; font-size: 1.05rem; margin: 0.75rem 0;">
+  <em>step cost = Σ<sub>channels</sub> cost<sub>channel</sub> + distance(km) × w<sub>distance</sub></em>
+</p>
+<p>
+  Crucially, this cost function is <strong>shared</strong> between the routing engine and the UI charts — both call the same code, ensuring that what the analyst sees in the stacked bar charts is exactly what the optimiser minimised.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — adjust appetites to see their effect on per-channel and total cost</div>
+  <div class="flex-row">
+    <div id="appetiteSliders">
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-animals)"></span>Animals</label>
+        <input type="range" min="0" max="100" value="50" data-risk="animals">
+        <span class="value">0.50</span>
+      </div>
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-cold)"></span>Cold</label>
+        <input type="range" min="0" max="100" value="50" data-risk="cold">
+        <span class="value">0.50</span>
+      </div>
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-heat)"></span>Heat</label>
+        <input type="range" min="0" max="100" value="50" data-risk="heat">
+        <span class="value">0.50</span>
+      </div>
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-water)"></span>Water</label>
+        <input type="range" min="0" max="100" value="50" data-risk="water">
+        <span class="value">0.50</span>
+      </div>
+      <div class="slider-row">
+        <label><span class="risk-dot" style="background:var(--risk-human)"></span>Humans</label>
+        <input type="range" min="0" max="100" value="50" data-risk="human">
+        <span class="value">0.50</span>
+      </div>
+    </div>
+    <div>
+      <canvas id="appetiteCanvas" width="280" height="220"></canvas>
+    </div>
+  </div>
+  <p class="note">
+    Fixed risk profile for this cell: Animals 0.6, Cold 0.3, Heat 0.8, Water 0.5, Humans 0.2 (w<sub>risk</sub> = 10).
+    <br>Faded bars show the raw risk × w<sub>risk</sub>; solid bars show the effective cost after appetite scaling.
+  </p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">6.</span> The Journey Clock &amp; Travel Speed</h2>
+
+<p>
+  The sections above describe a <em>static</em> map: one fixed risk profile per cell. But a real journey happens <strong>in time</strong> — it departs at a chosen hour and moves at a chosen speed, and the danger of a place depends on <em>when</em> you are there. Blockbuster layers this on as a <strong>modifier chain</strong>: each cell's base profile is reshaped, in order, by travel speed, the day/night cycle, any moving hazards, and the wind, before the cost function (Section 5) scores it. The planner re-evaluates the whole chain for every cell <em>at the time the group would actually arrive</em>.
+</p>
+
+<div class="widget">
+  <div class="widget-title">The risk modifier chain — recomputed for every cell at its arrival time</div>
+  <div class="chain">
+    <span class="chain-box in">Base profile</span>
+    <span class="chain-arrow">→</span>
+    <span class="chain-box">Travel speed</span>
+    <span class="chain-arrow">→</span>
+    <span class="chain-box">Day / night</span>
+    <span class="chain-arrow">→</span>
+    <span class="chain-box">Moving hazards</span>
+    <span class="chain-arrow">→</span>
+    <span class="chain-box">Wind</span>
+    <span class="chain-arrow">→</span>
+    <span class="chain-box out">Cost</span>
+  </div>
+  <p class="note">Each link multiplies or offsets one or more of the five channels, clamped back into [0, 1]. The charts and the planner share this exact chain, so the costs you see are the costs that were optimised.</p>
+</div>
+
+<p>
+  The analyst sets a <strong>departure time</strong> and a <strong>speed mode</strong>. Speed is bounded to a realistic 5–30 km/h band, and the mode decides how it is chosen:
+</p>
+<ul style="margin: 0.5rem 0 1rem 1.5rem;">
+  <li><strong>Fixed</strong> — one constant speed for the whole route.</li>
+  <li><strong>Optimal</strong> — the planner tries several constant speeds (5, 10, … 30 km/h) and keeps whichever yields the cheapest route.</li>
+  <li><strong>Dynamic</strong> — speed is chosen <em>per cell</em>: at each step it takes whichever of the slow/fast extremes makes that cell cheaper to enter.</li>
+</ul>
+<p>
+  Speed matters because it is <strong>coupled to risk</strong>, not just to travel time. Moving fast helps you slip past predators and bandits — animal and human risk fall to <em>half</em> at top speed, because you are harder to catch — but it bites with wind-chill, so cold risk <em>doubles</em>. Heat and thirst are indifferent to pace. Faster also means you reach each cell sooner, which shifts where you land in the day/night cycle and the path of any moving hazard.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — how speed trades animal &amp; human risk against cold</div>
+  <div class="slider-row">
+    <label>Speed</label>
+    <input type="range" id="spdSpeed" min="5" max="30" step="1" value="15">
+    <span class="value" id="spdSpeedVal" style="min-width:6em;">15 km/h</span>
+  </div>
+  <div class="flex-row">
+    <div>
+      <canvas id="spdMultCanvas" width="280" height="170"></canvas>
+      <p style="text-align:center;font-size:0.8rem;margin-top:0.35rem;">Speed multiplier per channel (baseline = ×1)</p>
+    </div>
+    <div>
+      <canvas id="spdCostCanvas" width="280" height="200"></canvas>
+      <p style="text-align:center;font-size:0.8rem;margin-top:0.35rem;">Resulting cell cost (faded = at walking pace)</p>
+    </div>
+  </div>
+  <div id="spdStats" class="note"></div>
+  <p class="note">A fixed sample cell (animals 0.7, cold 0.5, heat 0.3, water 0.4, humans 0.6) at a neutral 0.5 appetite. Notice the sweet spot: pushing the pace sheds animal and human cost, until the rising cold term cancels the gain.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">7.</span> Day and Night</h2>
+
+<p>
+  With day/night variation switched on, the clock reshapes two channels. <strong>Night</strong> runs from <strong>20:00 to 06:00</strong> (wrapping midnight). After dark, wildlife settles — animal risk drops to <strong>×0.5</strong> — but human (bandit) risk climbs to <strong>×1.5</strong>, the classic ambush window.
+</p>
+<p>
+  There is one important exception. Inside a <strong>town</strong> the human threat <em>is</em> the settlement, and a settlement is at its safest in the dead of night: during the <strong>deep-sleep window of 01:00–05:00</strong> a town's human risk instead collapses to <strong>×0.5</strong>. Out in open country the bandit risk stays elevated all night. The other three channels — cold, heat, thirst — are left to the speed and weather factors.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — risk multipliers across the 24-hour clock</div>
+  <div class="slider-row">
+    <label>Time</label>
+    <input type="range" id="dnTime" min="0" max="1439" step="15" value="480">
+    <span class="value" id="dnTimeVal">08:00</span>
+  </div>
+  <canvas id="dnCanvas" width="600" height="220" style="width:100%;max-width:600px;"></canvas>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch" style="background:#e67e22"></span>Animals ×</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#9b59b6"></span>Humans — open country ×</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#5b2c6f"></span>Humans — in town ×</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#dfe6ef"></span>Night</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#c2cedd"></span>Deep sleep</span>
+  </div>
+  <div id="dnStats" class="note"></div>
+  <p class="note">Scrub the clock: the cursor tracks the three step-curves. Night shades the 20:00–06:00 band; the darker inset is the 01:00–05:00 deep-sleep window where towns go quiet.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">8.</span> Moving &amp; Time-Bounded Hazards</h2>
+
+<p>
+  Analysts can paint <strong>extra-risk zones</strong> straight onto the map (rectangle, circle or polygon) from the <em>Extra factors</em> tab. Each zone nudges <strong>one</strong> channel by a signed offset (−0.5 … +0.5); a cell's share is <strong>area-weighted</strong> — the fraction of the hex the zone covers, times the offset — and offsets from overlapping zones add. A purely static zone is folded into the cell profiles once and forgotten.
+</p>
+<p>
+  Zones get interesting when they gain a <strong>time window</strong> or <strong>motion</strong>. A zone with a start/end time counts only while the clock is inside it. A <strong>storm band</strong> goes further: a cold-risk parallelogram that <strong>sweeps across the map</strong> — east to west — over its active window. Its position is never stored; the planner recomputes the band's footprint on demand for the exact moment the group would reach each cell. So whether a storm hurts you turns on the race between your route and the front.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — a cold storm band sweeping its active window</div>
+  <canvas id="bandCanvas" width="600" height="300" style="width:100%;max-width:600px;background:#eef1f4;"></canvas>
+  <div class="slider-row">
+    <label>Time</label>
+    <input type="range" id="bandTime" min="0" max="1439" step="10" value="600">
+    <span class="value" id="bandTimeVal" style="min-width:8.5em;">10:00 · sweeping</span>
+  </div>
+  <div class="slider-row">
+    <label>Band width</label>
+    <input type="range" id="bandCells" min="2" max="9" step="1" value="5">
+    <span class="value" id="bandCellsVal">5 cells</span>
+  </div>
+  <label class="checkbox-label"><input type="checkbox" id="bandSlant" checked> slant west</label>
+  <div id="bandStats" class="note"></div>
+  <p class="note">Active 08:00–16:00. The band enters from the east at 08:00 and clears the west edge by 16:00; outside that window it is gone entirely. Cells whose centre falls inside the band pick up the extra cold the moment you are there.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">9.</span> The Cyclone — a Directional Wind Field</h2>
+
+<p>
+  The richest temporal factor is the <strong>cyclone</strong>: a rotating wind field whose eye drifts across the world over an active window. Unlike a zone — a flat scalar offset — wind is <strong>directional</strong>. Its effect depends on how your heading relates to the local air, so it is computed in two halves.
+</p>
+<p>
+  First, the <strong>wind vector</strong> at a point and time. Strength follows a radial profile around the eye — a <strong>calm eye</strong>, rising to a peak at the <strong>eyewall</strong>, then decaying to nothing by the <strong>outer radius</strong>. Direction is the <strong>anticlockwise</strong> tangent: the air circles the eye, running 90° to the line out from the centre.
+</p>
+<p>
+  Second, the <strong>effect of travelling a heading</strong> through that wind, set by the alignment between the two:
+</p>
+<ul style="margin: 0.5rem 0 1rem 1.5rem;">
+  <li><strong>Headwind</strong> (into the wind) — you slow down <em>and</em> every risk rises, cold most of all.</li>
+  <li><strong>Tailwind</strong> (wind behind) — you speed up and risks ease… except cold, which still nudges up.</li>
+  <li><strong>Crosswind</strong> (90°) — no effect.</li>
+</ul>
+<p>
+  In between, the impact builds up <strong>exponentially</strong> as your heading lines up with the wind, so only a near-dead head- or tail-wind feels the full force. Because a headwind both <em>costs more</em> and <em>takes longer</em>, the planner will happily bend a route to take the wind on the beam or the back.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — the rotating field and its pull on a traveller</div>
+  <div class="flex-row">
+    <div style="flex: 2 1 360px;">
+      <canvas id="cycCanvas" width="600" height="360" style="width:100%;max-width:600px;background:#eaf2fb;cursor:crosshair;"></canvas>
+    </div>
+    <div style="flex: 1 1 230px;">
+      <p class="widget-subhead">Travelling through the wind here</p>
+      <div id="cycClass" style="margin-bottom:0.5rem;"></div>
+      <canvas id="cycReadout" width="260" height="190"></canvas>
+    </div>
+  </div>
+  <div class="slider-row">
+    <label>Time</label>
+    <input type="range" id="cycTime" min="480" max="960" step="5" value="720">
+    <span class="value" id="cycTimeVal">12:00</span>
+  </div>
+  <div class="slider-row">
+    <label>Heading</label>
+    <input type="range" id="cycHeading" min="0" max="355" step="5" value="0">
+    <span class="value" id="cycHeadingVal" style="min-width:6.5em;">E · 0°</span>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch" style="background:#c0392b;border-radius:50%"></span>Eye (calm)</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#fff;border:2px solid #2980b9"></span>Eyewall (peak)</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#fff;border:2px dashed #95a5a6"></span>Outer edge</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#1c3d6b"></span>Wind</span>
+  </div>
+  <p class="note">Click the map to move the traveller (the white dot); spin the heading to feel the wind shift from head to cross to tail. Scrub time to drift the eye along its track. The arrows are the wind field — their length and depth show its strength.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">10.</span> Route Optimisation (A* Search)</h2>
+
+<p>
+  Given a set of waypoints, the system finds the lowest-cost path through the hex graph using the <strong>A* algorithm</strong>. A* is a best-first graph search that maintains a priority queue of candidate cells, ordered by <em>f(n) = g(n) + h(n)</em>, where:
+</p>
+<ul style="margin: 0.5rem 0 1rem 1.5rem;">
+  <li><em>g(n)</em> is the accumulated cost from the start to cell <em>n</em> — movement plus the full modifier chain (Section 6) at the time the group reaches each cell</li>
+  <li><em>h(n)</em> is an admissible heuristic for the cost still to come: the straight-line distance to the goal times the distance weight</li>
+</ul>
+<p>
+  Risk, the diversity penalty and every temporal effect only ever <em>add</em> cost on top of that straight-line floor, so the heuristic never overestimates and A* is guaranteed to return the optimal path for the given inputs. As it expands, A* threads the running <strong>arrival time</strong> through each cell, so day/night, moving hazards and wind are all evaluated for the moment the group would actually be there. On a hex grid of ~100 cells and degree 6, the search runs in well under 50 ms.
+</p>
+
+<p>
+  The widget below makes that search <strong>visible</strong>. A* explores outward from the start, always opening the most promising cell next — the one with the lowest <em>f = g + h</em>. Step through it, or press <em>Play</em>, and watch the two sets grow: the <strong>frontier</strong> (gold outlines — cells discovered but not yet committed) and the <strong>explored</strong> set (navy — cells whose best cost is now settled). When the frontier reaches the goal, the path is traced back through the recorded parent links.
+</p>
+<p>
+  The most instructive control is the <strong>heuristic weight</strong>. Slide it to <strong>0</strong> and A* degenerates into <strong>Dijkstra's algorithm</strong> — with no sense of direction it explores in an expanding blob, equally in all directions. At weight <strong>1</strong> it is true A*: the same optimal path, but the explored set is visibly pulled toward the goal, so far fewer cells are touched. Push it <strong>above 1</strong> and it becomes <strong>greedy / weighted</strong> — it rushes at the goal and finishes even faster, but may settle for a slightly costlier route. This is the central trade-off in heuristic search, the same one the <a href="https://www.redblobgames.com/pathfinding/a-star/introduction.html" target="_blank" rel="noopener">Red Blob Games</a> tutorials illustrate.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — watch A* explore the cost-weighted hex grid</div>
+  <canvas id="astarCanvas" width="600" height="320" style="background:#eef1f4; cursor:pointer; width:100%; max-width:600px;"></canvas>
+  <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin:0.85rem 0 0.6rem;">
+    <button id="astarPlay" type="button">▶ Play</button>
+    <button id="astarStep" type="button" class="secondary">Step ▷</button>
+    <button id="astarReset" type="button" class="secondary">↺ Reset</button>
+    <label class="checkbox-label"><input type="checkbox" id="astarScores"> show g / f scores</label>
+  </div>
+  <div class="slider-row">
+    <label>Heuristic</label>
+    <input type="range" id="astarHeur" min="0" max="280" value="100">
+    <span class="value" id="astarHeurVal" style="min-width:7.5em;">A* (optimal)</span>
+  </div>
+  <div class="slider-row">
+    <label>Speed</label>
+    <input type="range" id="astarSpeed" min="2" max="60" value="16">
+    <span class="value" id="astarSpeedVal">16/s</span>
+  </div>
+  <div class="slider-row">
+    <label>New map</label>
+    <input type="range" id="astarSeed" min="1" max="120" value="7">
+    <span class="value" id="astarSeedVal">7</span>
+  </div>
+  <div id="astarStats" style="margin-top:0.6rem; font-size:0.9rem; color:#444; font-variant-numeric:tabular-nums;"></div>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch" style="background:#27ae60"></span>Start</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#c0392b"></span>Goal</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:rgba(15,52,96,0.55)"></span>Explored</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#fff; border:2px solid #f1c40f"></span>Frontier</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#111"></span>Path</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:#3b3f46"></span>Wall</span>
+    <span class="legend-item"><span class="legend-swatch" style="background:linear-gradient(90deg,#50a05a,#f1c40f,#c0392b)"></span>cell cost (low→high)</span>
+  </div>
+  <p class="note">
+    Each hexagon is shaded by its traversal cost — green is cheap, red is costly — exactly the risk-weighted cost the planner minimises.
+    The two dark clusters are pre-placed <em>blocked</em> cells — impassable terrain the planner must route around.
+    <strong>Click any cell</strong> to add or remove blocked cells and watch A* adapt. Drag the <em>New map</em> slider to regenerate the cost field (blocking clusters reset with the map).
+  </p>
+</div>
+
+<p>
+  Multi-waypoint routes are computed <strong>segment by segment</strong>: A* is run independently between each consecutive pair of waypoints, in the order given, and the sub-paths are concatenated. The analyst can optionally let the planner <strong>reorder</strong> the intermediate waypoints to cut total cost — a greedy nearest-neighbour pass (a lightweight travelling-salesman heuristic) that keeps the start fixed. Cells flagged <strong>impassable</strong> are hard-blocked and routed around; a waypoint stranded behind a block stays reachable, because the leg that needs it falls back to a passable path.
+</p>
+
+<h3 style="margin-top:1.5rem;font-size:1.1rem;">Generating three diverse COAs</h3>
+<p>
+  A single optimal path is rarely enough for a decision. To produce <strong>three genuinely distinct Courses of Action</strong>, the planner combines <em>strategy biases</em> with an <em>overlap-penalised fan-out</em>. It first runs the search under three deliberately different cost balances, then keeps fanning out — each time inflating the cost of cells an accepted route already used — and rejects any candidate that retraces too much of an earlier one. Every survivor is finally re-scored under the analyst's <em>real</em> settings, so the ranking is honest no matter which bias discovered the route.
+</p>
+
+<div class="widget">
+  <div class="widget-title">How the planner fans out into three distinct corridors</div>
+  <div class="flowchart">
+    <div class="flow-box"><strong>Strategy biases</strong><br>Search three ways — Direct, Balanced, Cautious — to surface naturally different corridors</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box highlight"><strong>Penalise reuse</strong><br>Multiply the cost of every cell an accepted COA already crossed</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box"><strong>Fan out</strong><br>Re-run A* under the real settings — it now steers around the penalised cells</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box highlight"><strong>Reject near-duplicates</strong><br>Drop a candidate that overlaps an accepted route by more than 80%</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box" style="border-color: #27ae60;"><strong>Score &amp; rank</strong><br>Re-cost every survivor under the analyst's real appetites; keep the three cheapest</div>
+  </div>
+  <p class="note">The reuse penalty is a soft constraint — used cells aren't forbidden, just made expensive — which fans each successive COA onto fresh ground. (Overlap is measured as the Jaccard ratio of shared to total cells.) Re-scoring under the real cost function keeps the three totals directly comparable.</p>
+</div>
+
+<p>
+  The three COAs are ranked by total cost. Each records a per-cell breakdown of risk contributions, enabling the detailed visual comparison described in the next section.
+</p>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">11.</span> Comparing Courses of Action</h2>
+
+<p>
+  The three COAs are visualised as <strong>stacked bar charts</strong>. Each bar represents one cell along the route; each coloured segment shows the contribution of one risk channel to that cell's cost. The total cost of each COA is displayed above its chart. When the journey has timing, the bars are laid along a shared <strong>time axis</strong> (departure → arrival) and each COA is annotated with its clock and travel speed, so you can read off <em>when</em> each risk is met as well as how much it costs.
+</p>
+<p>
+  This decomposition is possible because the cost function is additive across channels — the analyst can immediately see which risks dominate each route and make an informed choice. For example, one COA might show tall red (heat) segments while another shows tall purple (human) segments of similar overall height, representing a genuine trade-off.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Interactive — stacked bar charts for three COAs</div>
+  <div id="coaWidget">
+    <div class="bar-chart-container" id="coaBars"></div>
+    <div class="legend" id="coaLegend"></div>
+  </div>
+  <div style="margin-top:1rem;">
+    <label for="coaSeed">Randomise cell risks:</label>
+    <input type="range" id="coaSeed" min="1" max="100" value="1" style="width:50%;">
+    <span id="coaSeedVal">1</span>
+  </div>
+  <p class="note">Each bar is one cell on the route; colour indicates the per-channel risk cost. Slide to randomise the risk distributions and observe how the trade-offs change.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">12.</span> Responsiveness and Concurrency</h2>
+
+<p>
+  Route optimisation — three A* searches across a ~100-cell graph — can take tens of milliseconds. To prevent the UI from freezing during computation, the routing engine runs in a <strong>Web Worker</strong> (a browser-native background thread). The main thread remains responsive to slider adjustments and map interactions throughout.
+</p>
+<p>
+  User actions are <strong>debounced</strong> with a ~150 ms window: rapid successive changes (e.g., dragging a slider) are coalesced into a single route-planning request. If the analyst modifies the inputs while a plan is in progress, the system applies <strong>stale-guarding</strong> — it checks whether the returned plan's waypoints still match the current state, and discards outdated results.
+</p>
+
+<div class="widget">
+  <div class="widget-title">Data flow — from user action to updated COA display</div>
+  <div class="flowchart">
+    <div class="flow-box">User adjusts a slider or moves a waypoint</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box highlight">Debounce — wait 150 ms for more changes</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box">Build route request with current settings</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box highlight">Send to Web Worker (background thread)</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box">Worker runs A* × 3 and returns 3 COAs</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-box" style="border-color:#27ae60;">
+      <strong>Stale check</strong> — do the waypoints still match?<br>
+      ✅ Yes → display results &nbsp; ❌ No → discard &amp; re-plan
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="section-number">13.</span> Glossary</h2>
+
+<table class="glossary-table">
+  <tr><th>COA</th><td><strong>Course of Action</strong> — one of the three route options the system generates.</td></tr>
+  <tr><th>Seed</th><td>A number that controls the random landscape generation. Same seed = same landscape.</td></tr>
+  <tr><th>Hex cell</th><td>One hexagonal tile on the grid. Each cell has its own risk profile.</td></tr>
+  <tr><th>Risk profile</th><td>The five danger scores (animals, cold, heat, water, humans) for a single cell.</td></tr>
+  <tr><th>Risk appetite</th><td>How tolerant the analyst is of each risk type, set via sliders (0 = avoid, 1 = tolerate).</td></tr>
+  <tr><th>Waypoint</th><td>A cell the analyst selects as a destination — the route must pass through all waypoints.</td></tr>
+  <tr><th>A* algorithm</th><td>A well-known shortest-path algorithm that finds the lowest-cost route through a graph.</td></tr>
+  <tr><th>Perlin noise</th><td>A method for generating smooth, natural-looking random patterns (used for terrain).</td></tr>
+  <tr><th>Web Worker</th><td>A browser feature that runs heavy calculations in a background thread, keeping the UI responsive.</td></tr>
+  <tr><th>Debounce</th><td>Waiting briefly before acting on rapid repeated changes, so only the final state is processed.</td></tr>
+  <tr><th>Modifier chain</th><td>The ordered set of adjustments — speed, day/night, moving hazards, wind — applied to a cell's base risk before it is costed, recomputed at the arrival time.</td></tr>
+  <tr><th>Speed mode</th><td>How travel speed is chosen: <strong>Fixed</strong> (one constant speed), <strong>Optimal</strong> (best of several constant speeds), or <strong>Dynamic</strong> (chosen per cell).</td></tr>
+  <tr><th>Day/night variation</th><td>An optional toggle that calms animals (×0.5) and emboldens bandits (×1.5) at night — except towns, which quieten in the deep-sleep hours.</td></tr>
+  <tr><th>Deep-sleep window</th><td>01:00–05:00, when a town's human risk drops to ×0.5 because the settlement is asleep.</td></tr>
+  <tr><th>Extra-risk zone</th><td>An analyst-drawn rectangle, circle or polygon that offsets one risk channel for the cells it covers (area-weighted).</td></tr>
+  <tr><th>Storm band</th><td>A cold-risk zone that sweeps across the map over a set window — a moving, time-bounded hazard.</td></tr>
+  <tr><th>Cyclone</th><td>A rotating wind field whose eye drifts across the world; its effect on speed and risk is directional (head/tail/cross wind).</td></tr>
+  <tr><th>Headwind / tailwind</th><td>Travelling into the wind (slower, riskier) versus with it (faster, safer) — relative to the local wind direction.</td></tr>
+  <tr><th>Arrival window</th><td>An optional earliest/latest arrival time on a waypoint; missing it adds a soft cost penalty rather than blocking the route.</td></tr>
+</table>
+
+<!-- ═════════════════════════════════════════════════════════ -->
+<!-- SCRIPTS — all widgets are self-contained below           -->
+<!-- ═════════════════════════════════════════════════════════ -->
+<script>
+// ── Shared helpers ──────────────────────────────────────────
+const RISK_COLORS = {
+  animals: '#e67e22',
+  cold:    '#3498db',
+  heat:    '#e74c3c',
+  water:   '#1abc9c',
+  human:   '#9b59b6',
+};
+const RISK_NAMES = ['animals', 'cold', 'heat', 'water', 'human'];
+const RISK_LABELS = { animals: 'Animals', cold: 'Cold', heat: 'Heat', water: 'Water', human: 'Humans' };
+
+// Simple seeded PRNG (mulberry32) — same one the app uses
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ── Widget 1: Terrain generation (Perlin noise) ─────────────
+(function() {
+  const canvas = document.getElementById('terrainCanvas');
+  const ctx = canvas.getContext('2d');
+  const seedSlider = document.getElementById('seedInput');
+  const seedLabel = document.getElementById('seedValue');
+
+  function hashLattice(ix, iy, seed) {
+    let h = seed | 0;
+    h = Math.imul(h ^ (ix | 0), 0x85ebca6b);
+    h = Math.imul(h ^ (iy | 0), 0xc2b2ae35);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0x27d4eb2f);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+
+  function smootherstep(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+
+  function dotGrad(ix, iy, x, y, seed) {
+    const angle = hashLattice(ix, iy, seed) * Math.PI * 2;
+    return Math.cos(angle) * (x - ix) + Math.sin(angle) * (y - iy);
+  }
+
+  function perlin(x, y, seed) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const u = smootherstep(fx), v = smootherstep(fy);
+    const n00 = dotGrad(ix, iy, x, y, seed);
+    const n10 = dotGrad(ix+1, iy, x, y, seed);
+    const n01 = dotGrad(ix, iy+1, x, y, seed);
+    const n11 = dotGrad(ix+1, iy+1, x, y, seed);
+    const nx0 = n00 + (n10 - n00) * u;
+    const nx1 = n01 + (n11 - n01) * u;
+    const n = nx0 + (nx1 - nx0) * v;
+    return Math.max(0, Math.min(1, n * 0.7071 + 0.5));
+  }
+
+  function fbm(x, y, seed, octaves) {
+    let amp = 0.5, freq = 1, sum = 0, norm = 0;
+    for (let o = 0; o < octaves; o++) {
+      sum += amp * perlin(x * freq, y * freq, seed + o * 1013);
+      norm += amp;
+      amp *= 0.5;
+      freq *= 2;
+    }
+    return sum / norm;
+  }
+
+  const biomeColors = [
+    [30, 100, 180],  // water (low elevation)
+    [34, 139, 34],   // woodland
+    [124, 180, 66],  // grassland
+    [194, 178, 128], // savannah
+    [139, 119, 101], // mountains (high)
+    [220, 220, 230], // snow cap
+  ];
+
+  function terrainColor(elev, veg) {
+    if (elev < 0.15) return biomeColors[0];
+    if (elev > 0.85) return biomeColors[5];
+    if (elev > 0.7) return biomeColors[4];
+    if (veg > 0.6) return biomeColors[1];
+    if (veg > 0.35) return biomeColors[2];
+    return biomeColors[3];
+  }
+
+  function renderTerrain() {
+    const seed = parseInt(seedSlider.value);
+    seedLabel.textContent = seed;
+    const w = canvas.width, h = canvas.height;
+    const img = ctx.createImageData(w, h);
+    const scale = 8;
+    for (let py = 0; py < h; py++) {
+      for (let px = 0; px < w; px++) {
+        const x = px / w * scale, y = py / h * scale;
+        const elev = fbm(x, y, seed, 4);
+        const veg = fbm(x + 50, y + 50, seed + 999, 3);
+        const [r, g, b] = terrainColor(elev, veg);
+        const i = (py * w + px) * 4;
+        img.data[i] = r; img.data[i+1] = g; img.data[i+2] = b; img.data[i+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  seedSlider.addEventListener('input', renderTerrain);
+  renderTerrain();
+})();
+
+// ── Widget 2: Hex vs Square ────────────────────────────────
+(function() {
+  function drawSquareGrid(canvasId) {
+    const c = document.getElementById(canvasId);
+    const ctx = c.getContext('2d');
+    const size = 50, ox = 30, oy = 30;
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    // Draw 3×3 grid
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    for (let r = 0; r < 4; r++) for (let q = 0; q < 4; q++) {
+      ctx.strokeRect(ox + q * size, oy + r * size, size, size);
+    }
+
+    // Highlight centre cell
+    ctx.fillStyle = 'rgba(15, 52, 96, 0.15)';
+    ctx.fillRect(ox + size, oy + size, size, size);
+
+    // Centre dot
+    const cx = ox + 1.5 * size, cy = oy + 1.5 * size;
+    ctx.fillStyle = var_accent();
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+
+    // Draw lines to neighbours with distance labels
+    const neighbors = [
+      [0, -1, '1.0'], [1, -1, '1.41'], [1, 0, '1.0'], [1, 1, '1.41'],
+      [0, 1, '1.0'], [-1, 1, '1.41'], [-1, 0, '1.0'], [-1, -1, '1.41']
+    ];
+
+    neighbors.forEach(([dq, dr, dist]) => {
+      const nx = cx + dq * size, ny = cy + dr * size;
+      ctx.strokeStyle = dist === '1.41' ? '#e74c3c' : '#27ae60';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(nx, ny); ctx.stroke();
+
+      // Distance label
+      const lx = cx + dq * size * 0.55, ly = cy + dr * size * 0.55;
+      ctx.fillStyle = dist === '1.41' ? '#c0392b' : '#1e8449';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(dist, lx + (dq === 0 ? 14 : 0), ly + (dr === 0 ? -8 : 0));
+    });
+
+    ctx.fillStyle = '#333';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🟢 = 1.0   🔴 = 1.41', c.width / 2, c.height - 10);
+  }
+
+  function drawHexGrid(canvasId) {
+    const c = document.getElementById(canvasId);
+    const ctx = c.getContext('2d');
+    const size = 32, cx = c.width / 2, cy = c.height / 2;
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    // Pointy-top hex vertices
+    function hexCorners(hx, hy, s) {
+      const pts = [];
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI / 180 * (60 * i - 30);
+        pts.push([hx + s * Math.cos(angle), hy + s * Math.sin(angle)]);
+      }
+      return pts;
+    }
+
+    function drawHex(hx, hy, fill) {
+      const pts = hexCorners(hx, hy, size);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < 6; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Axial to pixel (pointy-top)
+    function axToPixel(q, r) {
+      const x = size * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r);
+      const y = size * (3/2 * r);
+      return [cx + x, cy + y];
+    }
+
+    // Draw ring of neighbours + centre
+    const axialNeighbors = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+
+    // Background hexes
+    for (const [dq, dr] of axialNeighbors) {
+      const [hx, hy] = axToPixel(dq, dr);
+      drawHex(hx, hy, null);
+    }
+    drawHex(cx, cy, 'rgba(15, 52, 96, 0.15)');
+
+    // Centre dot
+    ctx.fillStyle = var_accent();
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+
+    // Lines to all neighbours — all green (equal distance)
+    for (const [dq, dr] of axialNeighbors) {
+      const [nx, ny] = axToPixel(dq, dr);
+      ctx.strokeStyle = '#27ae60';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(nx, ny); ctx.stroke();
+
+      // Label
+      const lx = cx + (nx - cx) * 0.55, ly = cy + (ny - cy) * 0.55;
+      ctx.fillStyle = '#1e8449';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('1.0', lx, ly - 6);
+    }
+
+    ctx.fillStyle = '#333';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🟢 All neighbours = 1.0', c.width / 2, c.height - 10);
+  }
+
+  function var_accent() { return '#0f3460'; }
+
+  drawSquareGrid('squareCanvas');
+  drawHexGrid('hexCanvas');
+})();
+
+// ── Widget 3: Risk mapping ─────────────────────────────────
+(function() {
+  const widget = document.getElementById('riskMappingWidget');
+  const sliders = widget.querySelectorAll('input[type="range"]');
+  const canvas = document.getElementById('riskProfileCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function getTerrainValues() {
+    const v = {};
+    sliders.forEach(s => {
+      v[s.dataset.terrain] = parseInt(s.value) / 100;
+      s.nextElementSibling.textContent = (parseInt(s.value) / 100).toFixed(2);
+    });
+    return v;
+  }
+
+  function terrainToRisk(t) {
+    return {
+      animals: Math.min(1, t.vegetation * 0.9),
+      cold:    Math.min(1, t.elevation * 0.7 + (1 - t.temperature) * 0.4),
+      heat:    Math.min(1, t.temperature * 0.95),
+      water:   Math.min(1, (1 - t.water) * 0.85),
+      human:   Math.min(1, t.bandit * 0.9),
+    };
+  }
+
+  function drawRiskProfile() {
+    const t = getTerrainValues();
+    const risk = terrainToRisk(t);
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const barW = 36, gap = 12, total = RISK_NAMES.length;
+    const chartW = total * barW + (total - 1) * gap;
+    const startX = (w - chartW) / 2;
+    const maxH = h - 40;
+
+    RISK_NAMES.forEach((name, i) => {
+      const x = startX + i * (barW + gap);
+      const val = risk[name];
+      const barH = val * maxH;
+
+      ctx.fillStyle = RISK_COLORS[name];
+      ctx.fillRect(x, h - 20 - barH, barW, barH);
+
+      ctx.fillStyle = '#555';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(RISK_LABELS[name], x + barW / 2, h - 4);
+      ctx.fillStyle = RISK_COLORS[name];
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(val.toFixed(2), x + barW / 2, h - 24 - barH);
+    });
+  }
+
+  sliders.forEach(s => s.addEventListener('input', drawRiskProfile));
+  drawRiskProfile();
+})();
+
+// ── Widget 4: Appetite / Cost ──────────────────────────────
+(function() {
+  const container = document.getElementById('appetiteSliders');
+  const sliders = container.querySelectorAll('input[type="range"]');
+  const canvas = document.getElementById('appetiteCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const fixedRisk = { animals: 0.6, cold: 0.3, heat: 0.8, water: 0.5, human: 0.2 };
+  const riskWeight = 10;
+
+  function getAppetites() {
+    const a = {};
+    sliders.forEach(s => {
+      a[s.dataset.risk] = parseInt(s.value) / 100;
+      s.parentElement.querySelector('.value').textContent = (parseInt(s.value) / 100).toFixed(2);
+    });
+    return a;
+  }
+
+  function drawCostBars() {
+    const appetite = getAppetites();
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const barW = 40, gap = 10, total = RISK_NAMES.length;
+    const chartW = total * barW + (total - 1) * gap;
+    const startX = (w - chartW) / 2;
+    const maxH = h - 50;
+
+    let maxCost = 0;
+    const costs = {};
+    RISK_NAMES.forEach(name => {
+      costs[name] = fixedRisk[name] * (1 - appetite[name]) * riskWeight;
+      if (costs[name] > maxCost) maxCost = costs[name];
+    });
+    if (maxCost === 0) maxCost = 1;
+    const scale = maxH / Math.max(maxCost, riskWeight * 1);
+
+    RISK_NAMES.forEach((name, i) => {
+      const x = startX + i * (barW + gap);
+      const barH = costs[name] * scale;
+
+      // Risk portion (faded)
+      const fullH = fixedRisk[name] * riskWeight * scale;
+      ctx.fillStyle = RISK_COLORS[name] + '30';
+      ctx.fillRect(x, h - 30 - fullH, barW, fullH);
+
+      // Effective cost
+      ctx.fillStyle = RISK_COLORS[name];
+      ctx.fillRect(x, h - 30 - barH, barW, barH);
+
+      ctx.fillStyle = '#555';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(RISK_LABELS[name], x + barW / 2, h - 14);
+      ctx.fillStyle = RISK_COLORS[name];
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(costs[name].toFixed(1), x + barW / 2, h - 34 - barH);
+    });
+
+    // Total
+    const totalCost = Object.values(costs).reduce((a, b) => a + b, 0);
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Total cell cost: ' + totalCost.toFixed(1), w / 2, 16);
+
+    ctx.fillStyle = '#999';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('(faded = full risk, solid = after appetite)', w / 2, 32);
+  }
+
+  sliders.forEach(s => s.addEventListener('input', drawCostBars));
+  drawCostBars();
+})();
+
+// ── Widget 5: COA stacked bars ─────────────────────────────
+(function() {
+  const container = document.getElementById('coaBars');
+  const legendEl = document.getElementById('coaLegend');
+  const seedSlider = document.getElementById('coaSeed');
+  const seedLabel = document.getElementById('coaSeedVal');
+
+  // Build legend once
+  RISK_NAMES.forEach(name => {
+    const item = document.createElement('span');
+    item.className = 'legend-item';
+    item.innerHTML = `<span class="legend-swatch" style="background:${RISK_COLORS[name]}"></span>${RISK_LABELS[name]}`;
+    legendEl.appendChild(item);
+  });
+
+  function generateCOAs(seed) {
+    const rng = mulberry32(seed);
+    const coas = [];
+    const coaLabels = ['Best route', 'Alternative 1', 'Alternative 2'];
+    for (let c = 0; c < 3; c++) {
+      const steps = 4 + Math.floor(rng() * 3) + c; // Longer alternatives
+      const cells = [];
+      for (let s = 0; s < steps; s++) {
+        const profile = {};
+        RISK_NAMES.forEach(name => {
+          // Bias each COA differently
+          let base = rng() * 0.8;
+          if (c === 1 && name === 'heat') base *= 0.3; // Alt1 avoids heat
+          if (c === 1 && name === 'human') base = Math.min(1, base + 0.4); // but more humans
+          if (c === 2 && name === 'animals') base *= 0.2; // Alt2 avoids animals
+          if (c === 2 && name === 'cold') base = Math.min(1, base + 0.3); // but colder
+          profile[name] = base * (1 - 0.5) * 10; // appetite 0.5
+        });
+        cells.push(profile);
+      }
+      const total = cells.reduce((sum, cell) =>
+        sum + RISK_NAMES.reduce((s, n) => s + cell[n], 0), 0);
+      coas.push({ label: coaLabels[c], cells, total });
+    }
+    return coas;
+  }
+
+  function renderCOAs() {
+    const seed = parseInt(seedSlider.value);
+    seedLabel.textContent = seed;
+    const coas = generateCOAs(seed);
+    container.innerHTML = '';
+
+    // Find max cell cost for scaling
+    let maxCellCost = 0;
+    coas.forEach(coa => coa.cells.forEach(cell => {
+      const cellTotal = RISK_NAMES.reduce((s, n) => s + cell[n], 0);
+      if (cellTotal > maxCellCost) maxCellCost = cellTotal;
+    }));
+
+    const maxBarH = 180;
+
+    coas.forEach(coa => {
+      const col = document.createElement('div');
+      col.className = 'bar-col';
+
+      const costLabel = document.createElement('div');
+      costLabel.className = 'bar-cost';
+      costLabel.textContent = coa.total.toFixed(1);
+      col.appendChild(costLabel);
+
+      // Row of mini stacked bars
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '2px';
+      row.style.alignItems = 'flex-end';
+
+      coa.cells.forEach(cell => {
+        const bar = document.createElement('div');
+        bar.className = 'stacked-bar';
+        const cellTotal = RISK_NAMES.reduce((s, n) => s + cell[n], 0);
+        const barH = (cellTotal / maxCellCost) * maxBarH;
+        bar.style.height = barH + 'px';
+        bar.style.width = '14px';
+
+        RISK_NAMES.forEach(name => {
+          const seg = document.createElement('div');
+          seg.className = 'segment';
+          const fraction = cellTotal > 0 ? cell[name] / cellTotal : 0;
+          seg.style.height = (fraction * 100) + '%';
+          seg.style.background = RISK_COLORS[name];
+          bar.appendChild(seg);
+        });
+
+        row.appendChild(bar);
+      });
+
+      col.appendChild(row);
+
+      const label = document.createElement('div');
+      label.className = 'bar-label';
+      label.textContent = coa.label;
+      col.appendChild(label);
+
+      container.appendChild(col);
+    });
+  }
+
+  seedSlider.addEventListener('input', renderCOAs);
+  renderCOAs();
+})();
+
+// ── Widget 6: A* search visualisation ──────────────────────
+(function() {
+  const canvas = document.getElementById('astarCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const playBtn   = document.getElementById('astarPlay');
+  const stepBtn   = document.getElementById('astarStep');
+  const resetBtn  = document.getElementById('astarReset');
+  const scoresChk = document.getElementById('astarScores');
+  const heurEl    = document.getElementById('astarHeur');
+  const heurVal   = document.getElementById('astarHeurVal');
+  const speedEl   = document.getElementById('astarSpeed');
+  const speedVal  = document.getElementById('astarSpeedVal');
+  const seedEl    = document.getElementById('astarSeed');
+  const seedVal   = document.getElementById('astarSeedVal');
+  const statsEl   = document.getElementById('astarStats');
+
+  // ── Grid geometry (pointy-top, odd-r offset coordinates) ──
+  const COLS = 14, ROWS = 9, SIZE = 18;
+  const SQRT3 = Math.sqrt(3);
+  const gridW = SQRT3 * SIZE * (COLS + 0.5);
+  const gridH = 1.5 * SIZE * (ROWS - 1) + 2 * SIZE;
+  const ox = (canvas.width  - gridW) / 2 + SQRT3 * SIZE / 2;
+  const oy = (canvas.height - gridH) / 2 + SIZE;
+
+  const MOVE_COST   = 1;   // flat per-step movement cost (the heuristic's floor)
+  const RISK_WEIGHT = 9;   // risk scaling, mirroring the app's w_risk
+
+  const START = { col: 0, row: ROWS - 1 };
+  const GOAL  = { col: COLS - 1, row: 0 };
+  const startKey = key(START.col, START.row);
+  const goalKey  = key(GOAL.col, GOAL.row);
+
+  function key(col, row) { return col + ',' + row; }
+  function fromKey(k) { const i = k.indexOf(','); return [+k.slice(0, i), +k.slice(i + 1)]; }
+  function inGrid(col, row) { return col >= 0 && col < COLS && row >= 0 && row < ROWS; }
+
+  // odd-r neighbour offsets: index 0 = even rows, 1 = odd rows
+  const ODDR = [
+    [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]],
+    [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]],
+  ];
+  function neighbors(col, row) {
+    const out = [];
+    for (const [dc, dr] of ODDR[row & 1]) {
+      const nc = col + dc, nr = row + dr;
+      if (inGrid(nc, nr)) out.push([nc, nr]);
+    }
+    return out;
+  }
+  function cube(col, row) {
+    const q = col - (row - (row & 1)) / 2;
+    return [q, row, -q - row];
+  }
+  function hexDist(ac, ar, bc, br) {
+    const a = cube(ac, ar), b = cube(bc, br);
+    return (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])) / 2;
+  }
+  function center(col, row) {
+    return [
+      ox + SQRT3 * SIZE * (col + 0.5 * (row & 1)),
+      oy + 1.5 * SIZE * row,
+    ];
+  }
+  function hexPath(x, y) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.PI / 180 * (60 * i - 30);
+      const px = x + SIZE * Math.cos(ang), py = y + SIZE * Math.sin(ang);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
+
+  // ── Cost field: smooth value-noise from the seed ──
+  let costs = new Map();
+  function makeCosts(seed) {
+    const rng = mulberry32(seed);
+    const LW = 5, LH = 4;
+    const lat = [];
+    for (let i = 0; i < (LW + 1) * (LH + 1); i++) lat.push(rng());
+    const smooth = (t) => t * t * (3 - 2 * t);
+    const at = (a, b) => lat[Math.min(b, LH) * (LW + 1) + Math.min(a, LW)];
+    function noise(fx, fy) {
+      const x = fx * LW, y = fy * LH;
+      const ix = Math.floor(x), iy = Math.floor(y);
+      const tx = smooth(x - ix), ty = smooth(y - iy);
+      const top = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * tx;
+      const bot = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * tx;
+      return top + (bot - top) * ty;
+    }
+    const m = new Map();
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        let r = noise(col / (COLS - 1), row / (ROWS - 1));
+        r = Math.max(0, Math.min(1, (r - 0.15) / 0.7)); // stretch contrast
+        m.set(key(col, row), MOVE_COST + r * RISK_WEIGHT);
+      }
+    }
+    return m;
+  }
+  function costColor(c) {
+    const t = Math.max(0, Math.min(1, (c - MOVE_COST) / RISK_WEIGHT));
+    let r, g, b;
+    if (t < 0.5) { const u = t / 0.5; r = 80 + u * 161; g = 160 + u * 36; b = 90 - u * 75; }
+    else { const u = (t - 0.5) / 0.5; r = 241 - u * 49; g = 196 - u * 139; b = 15 + u * 28; }
+    return `rgb(${r | 0},${g | 0},${b | 0})`;
+  }
+
+  // ── A* state ──
+  // Two pre-built clusters of impassable cells restored each time the map regenerates.
+  const defaultWalls = [[3,3],[4,3],[3,4],[4,4],[3,5],    // left-centre cluster
+                         [9,1],[10,1],[9,2],[10,2],[10,3]] // right-centre cluster
+    .map(([c,r]) => key(c,r));
+  const walls = new Set(defaultWalls);
+  let open, gScore, cameFrom, closed, current, finished, pathCells, expanded, seq;
+  let playing = false, timer = null;
+
+  const heurWeight = () => parseInt(heurEl.value, 10) / 100;
+  const hCost = (col, row) => hexDist(col, row, GOAL.col, GOAL.row) * MOVE_COST * heurWeight();
+
+  function pushOpen(col, row, g) {
+    open.push({ col, row, g, f: g + hCost(col, row), seq: seq++ });
+  }
+  function popOpen() {
+    let bi = -1, best = null;
+    for (let i = 0; i < open.length; i++) {
+      const o = open[i];
+      if (!best || o.f < best.f || (o.f === best.f && o.seq < best.seq)) { best = o; bi = i; }
+    }
+    if (bi < 0) return null;
+    open.splice(bi, 1);
+    return best;
+  }
+
+  function reset() {
+    stopPlay();
+    open = []; gScore = new Map(); cameFrom = new Map(); closed = new Set();
+    current = null; finished = false; pathCells = null; expanded = 0; seq = 0;
+    gScore.set(startKey, 0);
+    pushOpen(START.col, START.row, 0);
+    render(); updateStats();
+  }
+
+  function reconstruct() {
+    const path = [];
+    let k = goalKey;
+    while (true) {
+      const [c, r] = fromKey(k);
+      path.push({ col: c, row: r });
+      if (k === startKey) break;
+      const p = cameFrom.get(k);
+      if (p === undefined) break;
+      k = p;
+    }
+    pathCells = path.reverse();
+  }
+
+  function step() {
+    if (finished) return;
+    let node = popOpen();
+    while (node && closed.has(key(node.col, node.row))) node = popOpen(); // skip stale duplicates
+    if (!node) { finished = true; pathCells = null; current = null; render(); updateStats(); return; }
+    current = node;
+    const ck = key(node.col, node.row);
+    if (ck === goalKey) { finished = true; reconstruct(); render(); updateStats(); return; }
+    closed.add(ck); expanded++;
+    const gCur = gScore.get(ck);
+    for (const [nc, nr] of neighbors(node.col, node.row)) {
+      const nk = key(nc, nr);
+      if (closed.has(nk) || walls.has(nk)) continue;
+      const tentative = gCur + costs.get(nk);
+      if (tentative < (gScore.has(nk) ? gScore.get(nk) : Infinity)) {
+        gScore.set(nk, tentative);
+        cameFrom.set(nk, ck);
+        pushOpen(nc, nr, tentative);
+      }
+    }
+    render(); updateStats();
+  }
+
+  // ── Rendering ──
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const openKeys = new Set(open.filter((o) => !closed.has(key(o.col, o.row))).map((o) => key(o.col, o.row)));
+
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const k = key(col, row);
+        const [x, y] = center(col, row);
+        hexPath(x, y);
+        ctx.fillStyle = walls.has(k) ? '#3b3f46' : costColor(costs.get(k));
+        ctx.fill();
+        if (!walls.has(k) && closed.has(k)) { hexPath(x, y); ctx.fillStyle = 'rgba(15,52,96,0.5)'; ctx.fill(); }
+        ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.stroke();
+      }
+    }
+
+    // frontier outlines
+    for (const k of openKeys) {
+      const [c, r] = fromKey(k);
+      const [x, y] = center(c, r);
+      hexPath(x, y); ctx.lineWidth = 2.5; ctx.strokeStyle = '#f1c40f'; ctx.stroke();
+    }
+
+    // current cell being expanded
+    if (current && !finished) {
+      const [x, y] = center(current.col, current.row);
+      hexPath(x, y); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+    }
+
+    // optional g / f labels
+    if (scoresChk.checked) {
+      ctx.textAlign = 'center';
+      ctx.font = '8px sans-serif';
+      for (const [k, g] of gScore) {
+        if (walls.has(k)) continue;
+        if (!closed.has(k) && !openKeys.has(k)) continue;
+        const [c, r] = fromKey(k);
+        const [x, y] = center(c, r);
+        const onClosed = closed.has(k);
+        ctx.fillStyle = onClosed ? 'rgba(255,255,255,0.95)' : '#1a1a2e';
+        ctx.fillText(g.toFixed(0), x, y - 0.5);
+        ctx.fillStyle = onClosed ? 'rgba(255,255,255,0.75)' : '#444';
+        ctx.fillText('f' + (g + hCost(c, r)).toFixed(0), x, y + 8);
+      }
+      ctx.textAlign = 'left';
+    }
+
+    // final path
+    if (pathCells && pathCells.length > 1) {
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath();
+      pathCells.forEach((p, i) => { const [x, y] = center(p.col, p.row); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.lineWidth = 5; ctx.strokeStyle = '#111'; ctx.stroke();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+    }
+
+    marker(START, '#27ae60', 'S');
+    marker(GOAL, '#c0392b', 'G');
+  }
+
+  function marker(cell, color, label) {
+    const [x, y] = center(cell.col, cell.row);
+    ctx.beginPath(); ctx.arc(x, y, SIZE * 0.58, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+
+  function updateStats() {
+    const frontier = open.filter((o) => !closed.has(key(o.col, o.row))).length;
+    let txt = `Explored: <strong>${expanded}</strong> &middot; Frontier: <strong>${frontier}</strong>`;
+    if (finished) {
+      if (pathCells) {
+        const cost = pathCells.slice(1).reduce((s, p) => s + costs.get(key(p.col, p.row)), 0);
+        txt += ` &middot; Path: <strong>${pathCells.length - 1}</strong> steps, total cost <strong>${cost.toFixed(1)}</strong>`;
+      } else {
+        txt += ` &middot; <strong style="color:#c0392b;">no path (goal walled off)</strong>`;
+      }
+    }
+    statsEl.innerHTML = txt;
+  }
+
+  // ── Playback ──
+  function tick() {
+    if (!playing) return;
+    step();
+    if (finished) { stopPlay(); return; }
+    timer = setTimeout(tick, 1000 / parseInt(speedEl.value, 10));
+  }
+  function startPlay() {
+    if (finished) reset();
+    playing = true; playBtn.textContent = '⏸ Pause'; tick();
+  }
+  function stopPlay() {
+    playing = false; if (playBtn) playBtn.textContent = '▶ Play';
+    if (timer) { clearTimeout(timer); timer = null; }
+  }
+
+  function heurLabel() {
+    const w = heurWeight();
+    if (w === 0) return 'Dijkstra (h=0)';
+    if (Math.abs(w - 1) < 1e-9) return 'A* (optimal)';
+    if (w < 1) return 'A* · w=' + w.toFixed(2);
+    return 'Greedy · w=' + w.toFixed(2);
+  }
+
+  // ── Wiring ──
+  playBtn.addEventListener('click', () => (playing ? stopPlay() : startPlay()));
+  stepBtn.addEventListener('click', () => { stopPlay(); if (finished) reset(); else step(); });
+  resetBtn.addEventListener('click', reset);
+  scoresChk.addEventListener('change', render);
+  speedEl.addEventListener('input', () => { speedVal.textContent = speedEl.value + '/s'; });
+  heurEl.addEventListener('input', () => { heurVal.textContent = heurLabel(); reset(); });
+  seedEl.addEventListener('input', () => {
+    seedVal.textContent = seedEl.value;
+    walls.clear();
+    defaultWalls.forEach((k) => walls.add(k));
+    costs = makeCosts(parseInt(seedEl.value, 10));
+    reset();
+  });
+
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    let best = null, bestD = Infinity;
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const [x, y] = center(col, row);
+        const d = (x - mx) ** 2 + (y - my) ** 2;
+        if (d < bestD) { bestD = d; best = key(col, row); }
+      }
+    }
+    if (best === null || bestD > (SIZE * 1.1) ** 2) return;
+    if (best === startKey || best === goalKey) return;
+    if (walls.has(best)) walls.delete(best); else walls.add(best);
+    reset();
+  });
+
+  // ── Init ──
+  speedVal.textContent = speedEl.value + '/s';
+  heurVal.textContent = heurLabel();
+  seedVal.textContent = seedEl.value;
+  costs = makeCosts(parseInt(seedEl.value, 10));
+
+  reset();
+})();
+</script>
+
+<!-- ═════════════════════════════════════════════════════════ -->
+<!-- SCRIPTS — temporal-factor widgets (speed, day/night,      -->
+<!-- moving hazards, cyclone wind field)                       -->
+<!-- ═════════════════════════════════════════════════════════ -->
+<script>
+// ═══════════════════════════════════════════════════════════
+//  Temporal-factor widgets — speed, day/night, moving hazards,
+//  cyclone wind field. Self-contained; mirror the engine formulas.
+// ═══════════════════════════════════════════════════════════
+(function () {
+  const COLORS = { animals: '#e67e22', cold: '#3498db', heat: '#e74c3c', water: '#1abc9c', human: '#9b59b6' };
+  const NAMES = ['animals', 'cold', 'heat', 'water', 'human'];
+  const LABELS = { animals: 'Animals', cold: 'Cold', heat: 'Heat', water: 'Water', human: 'Humans' };
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const clamp01 = (v) => clamp(v, 0, 1);
+  const smooth01 = (x) => { const t = clamp01(x); return t * t * (3 - 2 * t); };
+  function fmtClock(min) {
+    min = ((Math.round(min) % 1440) + 1440) % 1440;
+    const h = Math.floor(min / 60), m = min % 60;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+  }
+  // Unit-vector arrow in canvas space.
+  function arrow(ctx, x, y, ux, uy, len, color, lw, headLen) {
+    headLen = headLen == null ? Math.min(6, len * 0.5) : headLen;
+    const ex = x + ux * len, ey = y + uy * len;
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+    const ang = Math.atan2(uy, ux);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - headLen * Math.cos(ang - 0.4), ey - headLen * Math.sin(ang - 0.4));
+    ctx.lineTo(ex - headLen * Math.cos(ang + 0.4), ey - headLen * Math.sin(ang + 0.4));
+    ctx.closePath(); ctx.fill();
+  }
+
+  // ── Engine formulas (faithful copies) ──────────────────────
+  const SPEED_MIN = 5, SPEED_MAX = 30;
+  function speedMult(name, speed) {
+    const t = (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
+    if (name === 'animals' || name === 'human') return 1 - 0.5 * t;
+    if (name === 'cold') return 1 + 1.0 * t;
+    return 1;
+  }
+  const NIGHT_START = 20 * 60, NIGHT_END = 6 * 60, SLEEP_START = 60, SLEEP_END = 300;
+  const isNight = (t) => t >= NIGHT_START || t < NIGHT_END;
+  function dayNightMult(name, t, isTown) {
+    if (name === 'animals') return isNight(t) ? 0.5 : 1;
+    if (name === 'human') {
+      if (isTown && t >= SLEEP_START && t < SLEEP_END) return 0.5;
+      return isNight(t) ? 1.5 : 1;
+    }
+    return 1;
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  Widget — Speed ↔ risk
+  // ════════════════════════════════════════════════════════
+  (function () {
+    const speedEl = document.getElementById('spdSpeed');
+    if (!speedEl) return;
+    const speedVal = document.getElementById('spdSpeedVal');
+    const multCv = document.getElementById('spdMultCanvas');
+    const costCv = document.getElementById('spdCostCanvas');
+    const stats = document.getElementById('spdStats');
+    const mctx = multCv.getContext('2d');
+    const cctx = costCv.getContext('2d');
+    const BASE = { animals: 0.7, cold: 0.5, heat: 0.3, water: 0.4, human: 0.6 };
+    const APPETITE = 0.5, WRISK = 10, DIST = 40;
+
+    function drawMult(speed) {
+      const w = multCv.width, h = multCv.height;
+      mctx.clearRect(0, 0, w, h);
+      const n = NAMES.length, bw = 36, gap = 10;
+      const chartW = n * bw + (n - 1) * gap, sx = (w - chartW) / 2;
+      const base = h - 22, maxMult = 2, span = h - 40;
+      const y1 = base - (1 / maxMult) * span;
+      mctx.strokeStyle = '#bbb'; mctx.setLineDash([4, 3]); mctx.lineWidth = 1;
+      mctx.beginPath(); mctx.moveTo(sx - 6, y1); mctx.lineTo(sx + chartW + 6, y1); mctx.stroke();
+      mctx.setLineDash([]);
+      mctx.fillStyle = '#999'; mctx.font = '9px sans-serif'; mctx.textAlign = 'right';
+      mctx.fillText('×1', sx - 8, y1 + 3);
+      NAMES.forEach((name, i) => {
+        const m = speedMult(name, speed);
+        const x = sx + i * (bw + gap);
+        const bh = (m / maxMult) * span;
+        mctx.fillStyle = COLORS[name];
+        mctx.fillRect(x, base - bh, bw, bh);
+        mctx.fillStyle = '#555'; mctx.font = '9px sans-serif'; mctx.textAlign = 'center';
+        mctx.fillText(LABELS[name], x + bw / 2, h - 8);
+        mctx.fillStyle = '#333'; mctx.font = 'bold 10px sans-serif';
+        mctx.fillText('×' + m.toFixed(2), x + bw / 2, base - bh - 4);
+      });
+    }
+
+    function drawCost(speed) {
+      const w = costCv.width, h = costCv.height;
+      cctx.clearRect(0, 0, w, h);
+      const n = NAMES.length, bw = 38, gap = 10;
+      const chartW = n * bw + (n - 1) * gap, sx = (w - chartW) / 2;
+      const base = h - 22, span = h - 56;
+      const sens = 1 - APPETITE;
+      let total = 0, totalBase = 0, maxCost = 0;
+      const baseCost = {}, modCost = {};
+      NAMES.forEach((name) => {
+        baseCost[name] = BASE[name] * sens * WRISK;
+        modCost[name] = clamp01(BASE[name] * speedMult(name, speed)) * sens * WRISK;
+        total += modCost[name]; totalBase += baseCost[name];
+        maxCost = Math.max(maxCost, baseCost[name], modCost[name]);
+      });
+      const scale = span / Math.max(maxCost, 1);
+      NAMES.forEach((name, i) => {
+        const x = sx + i * (bw + gap);
+        const fh = baseCost[name] * scale, mh = modCost[name] * scale;
+        cctx.fillStyle = COLORS[name] + '33';
+        cctx.fillRect(x, base - fh, bw, fh);
+        cctx.fillStyle = COLORS[name];
+        cctx.fillRect(x, base - mh, bw, mh);
+        cctx.fillStyle = '#555'; cctx.font = '9px sans-serif'; cctx.textAlign = 'center';
+        cctx.fillText(LABELS[name], x + bw / 2, h - 8);
+      });
+      cctx.fillStyle = '#333'; cctx.font = 'bold 12px sans-serif'; cctx.textAlign = 'center';
+      cctx.fillText('Total cell cost ' + total.toFixed(1), w / 2, 16);
+      return { total, totalBase };
+    }
+
+    function render() {
+      const speed = parseInt(speedEl.value, 10);
+      speedVal.textContent = speed + ' km/h';
+      drawMult(speed);
+      const r = drawCost(speed);
+      const hours = DIST / speed;
+      const hh = Math.floor(hours), mm = Math.round((hours - hh) * 60);
+      const timeStr = (hh > 0 ? hh + ' h ' : '') + mm + ' min';
+      stats.innerHTML = 'At <strong>' + speed + ' km/h</strong>: ' + DIST + ' km takes <strong>' + timeStr +
+        '</strong> · cell cost <strong>' + r.total.toFixed(1) + '</strong> (vs ' + r.totalBase.toFixed(1) + ' at walking pace).';
+    }
+    speedEl.addEventListener('input', render);
+    render();
+  })();
+
+  // ════════════════════════════════════════════════════════
+  //  Widget — Day / night clock
+  // ════════════════════════════════════════════════════════
+  (function () {
+    const timeEl = document.getElementById('dnTime');
+    if (!timeEl) return;
+    const timeVal = document.getElementById('dnTimeVal');
+    const cv = document.getElementById('dnCanvas');
+    const stats = document.getElementById('dnStats');
+    const ctx = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+    const L = 40, R = 14, T = 16, B = 28;
+    const x = (min) => L + (min / 1440) * (W - L - R);
+    const MIN_M = 0.4, MAX_M = 1.6;
+    const y = (m) => T + (1 - (m - MIN_M) / (MAX_M - MIN_M)) * (H - T - B);
+
+    function band(x0, x1, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x(x0), T, x(x1) - x(x0), H - T - B);
+    }
+    function curve(fn, color, lw) {
+      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
+      let first = true;
+      for (let m = 0; m <= 1440; m += 2) {
+        const px = x(m), py = y(fn(m));
+        if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    function render() {
+      const t = parseInt(timeEl.value, 10);
+      timeVal.textContent = fmtClock(t);
+      ctx.clearRect(0, 0, W, H);
+      band(0, NIGHT_END, '#dfe6ef');
+      band(NIGHT_START, 1440, '#dfe6ef');
+      band(SLEEP_START, SLEEP_END, '#c2cedd');
+      ctx.strokeStyle = '#e3e3e3'; ctx.lineWidth = 1; ctx.fillStyle = '#999';
+      ctx.font = '9px sans-serif'; ctx.textAlign = 'right';
+      [0.5, 1, 1.5].forEach((m) => {
+        ctx.beginPath(); ctx.moveTo(L, y(m)); ctx.lineTo(W - R, y(m)); ctx.stroke();
+        ctx.fillText('×' + m.toFixed(1), L - 4, y(m) + 3);
+      });
+      ctx.textAlign = 'center';
+      for (let hgrid = 0; hgrid <= 24; hgrid += 3) {
+        const px = x(hgrid * 60);
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(String(hgrid).padStart(2, '0'), px, H - 8);
+      }
+      curve((m) => dayNightMult('animals', m, false), COLORS.animals, 2);
+      curve((m) => dayNightMult('human', m, false), COLORS.human, 2);
+      curve((m) => dayNightMult('human', m, true), '#5b2c6f', 2);
+      ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x(t), T); ctx.lineTo(x(t), H - B); ctx.stroke();
+      const dot = (m, color) => {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x(t), y(m), 4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+      };
+      dot(dayNightMult('animals', t, false), COLORS.animals);
+      dot(dayNightMult('human', t, false), COLORS.human);
+      dot(dayNightMult('human', t, true), '#5b2c6f');
+      const phase = (t >= SLEEP_START && t < SLEEP_END) ? 'deep sleep' : isNight(t) ? 'night' : 'daytime';
+      const a = dayNightMult('animals', t, false), hw = dayNightMult('human', t, false), ht = dayNightMult('human', t, true);
+      stats.innerHTML = '<strong>' + fmtClock(t) + '</strong> — ' + phase +
+        ' · animals ×' + a.toFixed(1) +
+        ' · humans: open country ×' + hw.toFixed(1) + ', town ×' + ht.toFixed(1) + '.';
+    }
+    timeEl.addEventListener('input', render);
+    render();
+  })();
+
+  // ════════════════════════════════════════════════════════
+  //  Widget — Moving storm band
+  // ════════════════════════════════════════════════════════
+  (function () {
+    const timeEl = document.getElementById('bandTime');
+    if (!timeEl) return;
+    const timeVal = document.getElementById('bandTimeVal');
+    const cellsEl = document.getElementById('bandCells');
+    const cellsVal = document.getElementById('bandCellsVal');
+    const slantEl = document.getElementById('bandSlant');
+    const stats = document.getElementById('bandStats');
+    const cv = document.getElementById('bandCanvas');
+    const ctx = cv.getContext('2d');
+    const WK = 50, HK = 30, CELL = 2.5, HEX = 2.4;
+    const COLS = Math.round(WK / CELL), ROWS = Math.round(HK / CELL);
+    const s = Math.min(cv.width / WK, cv.height / HK);
+    const ox = (cv.width - WK * s) / 2, oy = (cv.height - HK * s) / 2;
+    const START = 8 * 60, END = 16 * 60;
+    const cx = (xk) => ox + xk * s;
+    const cy = (yk) => oy + (HK - yk) * s;
+
+    function ringAt(t, bandCells, slantLeft) {
+      const f = (t - START) / (END - START);
+      const cxk = WK + (0 - WK) * f;
+      const halfW = (bandCells * HEX) / 2;
+      const drift = HK * Math.tan((30 * Math.PI) / 180) * (slantLeft ? -1 : 1);
+      const margin = HEX;
+      return [
+        { x: cxk - halfW, y: -margin },
+        { x: cxk + halfW, y: -margin },
+        { x: cxk + halfW + drift, y: HK + margin },
+        { x: cxk - halfW + drift, y: HK + margin },
+      ];
+    }
+    function inPoly(p, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i].x, yi = ring[i].y, xj = ring[j].x, yj = ring[j].y;
+        if ((yi > p.y) !== (yj > p.y) && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    }
+    function render() {
+      const t = parseInt(timeEl.value, 10);
+      const bandCells = parseInt(cellsEl.value, 10);
+      const slantLeft = slantEl.checked;
+      cellsVal.textContent = bandCells + ' cells';
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      const active = t >= START && t <= END;
+      const ring = active ? ringAt(t, bandCells, slantLeft) : null;
+      let covered = 0;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const center = { x: (c + 0.5) * CELL, y: (r + 0.5) * CELL };
+          const hit = ring && inPoly(center, ring);
+          if (hit) covered++;
+          ctx.fillStyle = hit ? 'rgba(52,152,219,0.30)' : '#f7f9fb';
+          ctx.fillRect(cx(c * CELL), cy((r + 1) * CELL), CELL * s, CELL * s);
+          ctx.strokeStyle = '#dde3ea'; ctx.lineWidth = 1;
+          ctx.strokeRect(cx(c * CELL), cy((r + 1) * CELL), CELL * s, CELL * s);
+        }
+      }
+      if (ring) {
+        ctx.beginPath();
+        ring.forEach((p, i) => { const X = cx(p.x), Y = cy(p.y); if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); });
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(52,152,219,0.16)';
+        ctx.fill();
+        ctx.strokeStyle = '#3498db'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1; ctx.strokeRect(ox, oy, WK * s, HK * s);
+      ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText('W', ox + 4, oy + 14);
+      ctx.textAlign = 'right'; ctx.fillText('E', ox + WK * s - 4, oy + 14);
+      timeVal.textContent = fmtClock(t) + (active ? ' · sweeping' : ' · inactive');
+      if (active) {
+        const f = (t - START) / (END - START);
+        const cxk = WK + (0 - WK) * f;
+        stats.innerHTML = '<strong>' + fmtClock(t) + '</strong> — band centred near x ≈ ' + cxk.toFixed(0) +
+          ' km · <strong>' + covered + '</strong> cells under extra cold.';
+      } else {
+        stats.innerHTML = '<strong>' + fmtClock(t) + '</strong> — band inactive (outside 08:00–16:00); no cold offset anywhere.';
+      }
+    }
+    [timeEl, cellsEl].forEach((el) => el.addEventListener('input', render));
+    slantEl.addEventListener('change', render);
+    render();
+  })();
+
+  // ════════════════════════════════════════════════════════
+  //  Widget — Cyclone wind field
+  // ════════════════════════════════════════════════════════
+  (function () {
+    const cv = document.getElementById('cycCanvas');
+    if (!cv) return;
+    const readout = document.getElementById('cycReadout');
+    const classEl = document.getElementById('cycClass');
+    const timeEl = document.getElementById('cycTime');
+    const timeVal = document.getElementById('cycTimeVal');
+    const headEl = document.getElementById('cycHeading');
+    const headVal = document.getElementById('cycHeadingVal');
+    const ctx = cv.getContext('2d');
+    const rctx = readout.getContext('2d');
+
+    const WK = 50, HK = 30;
+    const s = Math.min(cv.width / WK, cv.height / HK);
+    const ox = (cv.width - WK * s) / 2, oy = (cv.height - HK * s) / 2;
+    const cx = (xk) => ox + xk * s;
+    const cy = (yk) => oy + (HK - yk) * s;
+
+    const CYC = {
+      from: { x: WK * 1.15, y: HK * 0.35 }, to: { x: -WK * 0.15, y: HK * 0.65 },
+      start: 8 * 60, end: 16 * 60,
+      eyeR: 30 * 0.08, maxR: 30 * 0.28, outerR: 30 * 0.75, strength: 1,
+    };
+    let P = { x: 25, y: 24 };
+
+    function eyeAt(t) {
+      const f = clamp01((t - CYC.start) / (CYC.end - CYC.start));
+      return { x: CYC.from.x + (CYC.to.x - CYC.from.x) * f, y: CYC.from.y + (CYC.to.y - CYC.from.y) * f };
+    }
+    function radial(d) {
+      if (d <= CYC.eyeR) return 0;
+      if (d <= CYC.maxR) return smooth01((d - CYC.eyeR) / Math.max(1e-6, CYC.maxR - CYC.eyeR));
+      if (d < CYC.outerR) return smooth01((CYC.outerR - d) / Math.max(1e-6, CYC.outerR - CYC.maxR));
+      return 0;
+    }
+    function windAt(pt, t) {
+      const eye = eyeAt(t);
+      const rx = pt.x - eye.x, ry = pt.y - eye.y;
+      const d = Math.hypot(rx, ry);
+      if (d <= 1e-9) return null;
+      const strength = clamp01(radial(d) * CYC.strength);
+      if (strength <= 0) return null;
+      return { dir: { x: -ry / d, y: rx / d }, strength };
+    }
+    function expRamp(xv) { const k = 3; return (Math.exp(k * xv) - 1) / (Math.exp(k) - 1); }
+    function windEffect(travel, wind) {
+      const idn = { speedFactor: 1, mult: { animals: 1, cold: 1, heat: 1, water: 1, human: 1 }, alignment: 0 };
+      if (!wind || wind.strength <= 0) return idn;
+      const tLen = Math.hypot(travel.x, travel.y);
+      if (tLen <= 1e-9) return idn;
+      const a = (travel.x * wind.dir.x + travel.y * wind.dir.y) / tLen;
+      const intensity = Math.sign(a) * expRamp(Math.abs(a)) * wind.strength;
+      if (intensity === 0) return { speedFactor: 1, mult: { animals: 1, cold: 1, heat: 1, water: 1, human: 1 }, alignment: a };
+      const speedFactor = clamp(1 + 0.5 * intensity, 0.2, 2);
+      const head = Math.max(0, -intensity), tail = Math.max(0, intensity);
+      const other = 1 - 0.6 * intensity, cold = 1 + 1.0 * head + 0.15 * tail;
+      const mult = {};
+      NAMES.forEach((nm) => (mult[nm] = nm === 'cold' ? cold : other));
+      return { speedFactor, mult, alignment: a };
+    }
+
+    const COMPASS = ['E', 'NE', 'N', 'NW', 'W', 'SW', 'S', 'SE'];
+    const heading = () => (parseInt(headEl.value, 10) * Math.PI) / 180;
+    const travelDir = () => ({ x: Math.cos(heading()), y: Math.sin(heading()) });
+
+    function drawField(t) {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.strokeStyle = '#cdd9e6'; ctx.lineWidth = 1; ctx.strokeRect(ox, oy, WK * s, HK * s);
+      const step = 2.5;
+      for (let yk = step / 2; yk < HK; yk += step) {
+        for (let xk = step / 2; xk < WK; xk += step) {
+          const wind = windAt({ x: xk, y: yk }, t);
+          if (!wind) continue;
+          const len = 4 + wind.strength * 13;
+          arrow(ctx, cx(xk), cy(yk), wind.dir.x, -wind.dir.y, len,
+            'rgba(28,61,107,' + (0.25 + 0.6 * wind.strength).toFixed(3) + ')', 1.3, 4);
+        }
+      }
+      const eye = eyeAt(t);
+      const ring = (rk, style, dash) => {
+        ctx.strokeStyle = style; ctx.lineWidth = 1.5; ctx.setLineDash(dash);
+        ctx.beginPath(); ctx.arc(cx(eye.x), cy(eye.y), rk * s, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      };
+      ring(CYC.outerR, '#95a5a6', [5, 4]);
+      ring(CYC.maxR, '#2980b9', []);
+      ctx.fillStyle = '#c0392b';
+      ctx.beginPath(); ctx.arc(cx(eye.x), cy(eye.y), Math.max(3, CYC.eyeR * s), 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+      const td = travelDir();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(cx(P.x), cy(P.y), 6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#16213e'; ctx.lineWidth = 2; ctx.stroke();
+      arrow(ctx, cx(P.x), cy(P.y), td.x, -td.y, 26, '#111', 2.5, 7);
+    }
+
+    function drawReadout(t) {
+      const w = readout.width, h = readout.height;
+      rctx.clearRect(0, 0, w, h);
+      const wind = windAt(P, t);
+      const eff = windEffect(travelDir(), wind);
+      let tag, tagColor, sub;
+      if (!wind) {
+        tag = 'Calm'; tagColor = '#7f8c8d';
+        sub = 'no wind here (in the eye, beyond the edge, or outside the active window)';
+      } else {
+        const a = eff.alignment;
+        if (a > 0.34) { tag = 'Tailwind'; tagColor = '#27ae60'; }
+        else if (a < -0.34) { tag = 'Headwind'; tagColor = '#c0392b'; }
+        else { tag = 'Crosswind'; tagColor = '#7f8c8d'; }
+        sub = 'strength ' + wind.strength.toFixed(2) + ' · alignment ' + (a >= 0 ? '+' : '') + a.toFixed(2);
+      }
+      classEl.innerHTML = '<span class="tag" style="background:' + tagColor + '">' + tag + '</span> ' +
+        '<span style="font-size:0.82rem;color:#555;">' + sub + '</span>';
+      const rows = [{ label: 'Speed', val: eff.speedFactor, color: '#34495e' }]
+        .concat(NAMES.map((nm) => ({ label: LABELS[nm], val: eff.mult[nm], color: COLORS[nm] })));
+      const LX = 56, RX = 36, top = 10, rowH = (h - top - 6) / rows.length;
+      const maxV = 2;
+      const bx = (v) => LX + (clamp(v, 0, maxV) / maxV) * (w - LX - RX);
+      const x1 = bx(1);
+      rows.forEach((row, i) => {
+        const yTop = top + i * rowH, bh = Math.min(14, rowH - 6), yb = yTop + (rowH - bh) / 2;
+        rctx.fillStyle = '#eef1f4'; rctx.fillRect(LX, yb, w - LX - RX, bh);
+        rctx.fillStyle = row.color; rctx.fillRect(LX, yb, bx(row.val) - LX, bh);
+        rctx.fillStyle = '#444'; rctx.font = '10px sans-serif'; rctx.textAlign = 'right';
+        rctx.fillText(row.label, LX - 6, yb + bh - 2);
+        rctx.textAlign = 'left'; rctx.fillStyle = '#333'; rctx.font = 'bold 10px sans-serif';
+        rctx.fillText('×' + row.val.toFixed(2), w - RX + 4, yb + bh - 2);
+      });
+      rctx.strokeStyle = '#9aa3ad'; rctx.setLineDash([3, 3]); rctx.lineWidth = 1;
+      rctx.beginPath(); rctx.moveTo(x1, top - 2); rctx.lineTo(x1, h - 4); rctx.stroke();
+      rctx.setLineDash([]);
+      rctx.fillStyle = '#888'; rctx.font = '9px sans-serif'; rctx.textAlign = 'center';
+      rctx.fillText('×1', x1, top + 5);
+    }
+
+    function render() {
+      const t = parseInt(timeEl.value, 10);
+      timeVal.textContent = fmtClock(t);
+      const hdeg = parseInt(headEl.value, 10);
+      headVal.textContent = COMPASS[Math.round(hdeg / 45) % 8] + ' · ' + hdeg + '°';
+      drawField(t);
+      drawReadout(t);
+    }
+
+    cv.addEventListener('click', (e) => {
+      const rect = cv.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (cv.width / rect.width);
+      const my = (e.clientY - rect.top) * (cv.height / rect.height);
+      P = { x: clamp((mx - ox) / s, 0, WK), y: clamp(HK - (my - oy) / s, 0, HK) };
+      render();
+    });
+    [timeEl, headEl].forEach((el) => el.addEventListener('input', render));
+    render();
+  })();
+})();
+</script>
+
+</body>
+</html>
